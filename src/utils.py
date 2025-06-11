@@ -125,11 +125,11 @@ def save_base64_image(b64_data: str, path: str) -> None:
         f.write(image_data)
 
 
-def create_thumbnail(image_path: str, thumb_path: str, size: Tuple[int, int] = (256, 256)) -> None:
+def create_thumbnail(image_path: str, thumb_path: str, size: Tuple[int, int] = (600, 600)) -> None:
     """Create a thumbnail of an image."""
-    with Image.open(image_path) as img:
-        img.thumbnail(size)
-        img.save(thumb_path)
+    img = Image.open(image_path)
+    img.thumbnail(size)
+    img.save(thumb_path)
 
 
 def get_image_hash(image_path: str) -> str:

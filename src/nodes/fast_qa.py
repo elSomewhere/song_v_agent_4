@@ -52,35 +52,12 @@ def fast_qa_node(state: WorkflowState) -> WorkflowState:
 
 
 def _perform_fast_qa(client: Any, state: WorkflowState, variation: Any) -> QAResult:
-    """Perform the actual fast QA assessment."""
+    """Perform the actual fast QA assessment with 5-token prompt."""
     
     model = state.config["models"]["fast_qa"]
     
-    prompt = f"""Perform a FAST quality assessment of this generated storyboard frame.
-
-Original Request:
-- Scene {variation.scene_id}, Shot {variation.shot_id}
-- Prompt: {variation.image_prompt}
-- Camera: {variation.camera.distance} {variation.camera.angle}
-- Style: {state.style_text[:200]}
-
-Quick Assessment Criteria (be lenient, this is for storyboards):
-1. Does it match the requested scene/content? (most important)
-2. Are the main entities/characters present?
-3. Is the camera angle/framing approximately correct?
-4. Are there any severe quality issues (distortions, artifacts)?
-5. Does it follow the general style guide?
-
-Return JSON:
-{{
-    "status": "pass/retry/fail",
-    "quality_score": 0.0-1.0,
-    "specific_issues": ["list specific problems if any"],
-    "retry_guidance": "specific guidance if retry needed",
-    "positives": ["what works well"]
-}}
-
-Be pragmatic - storyboards don't need to be perfect. Focus on whether it conveys the scene."""
+    # 5-token prompt as specified in the task
+    prompt = "pass if clean, fail if blurry / broken."
     
     try:
         messages = [
@@ -103,36 +80,39 @@ Be pragmatic - storyboards don't need to be perfect. Focus on whether it conveys
             client,
             model=model,
             messages=messages,
-            temperature=0.3,
-            max_tokens=500
+            temperature=0.0,
+            max_tokens=10  # 5-token response
         )
         
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content.lower()
         # Vision models don't always return token counts
-        cost = 0.01  # Approximate cost
+        cost = 0.001  # Much cheaper with 5-token prompt
         
         state.total_cost += cost
         
-        # Parse response
-        qa_data = parse_json_response(content)
+        # Parse simple response
+        if "pass" in content:
+            status = "pass"
+            quality_score = 0.8
+        elif "fail" in content:
+            status = "fail"
+            quality_score = 0.3
+        else:
+            # Default to pass if unclear
+            status = "pass" 
+            quality_score = 0.7
         
         # Create QAResult
         qa_result = QAResult(
-            status=qa_data.get("status", "pass"),
-            quality_score=float(qa_data.get("quality_score", 0.7)),
-            specific_issues=qa_data.get("specific_issues", []),
-            retry_guidance=qa_data.get("retry_guidance")
+            status=status,
+            quality_score=quality_score,
+            specific_issues=[],
+            retry_guidance=None
         )
-        
-        # Apply thresholds
-        if qa_result.quality_score < 0.4:
-            qa_result.status = "fail"
-        elif qa_result.quality_score < 0.6 and len(qa_result.specific_issues) > 2:
-            qa_result.status = "retry"
         
         log_entry(state, "fast_qa", "assessed",
                  model=model, cost_usd=cost,
-                 extra={"score": qa_result.quality_score})
+                 extra={"response": content})
         
         return qa_result
         

@@ -1,7 +1,7 @@
 """Pydantic models for the VC-RAG-SBG system."""
 
 from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from uuid import uuid4
 
@@ -125,6 +125,9 @@ class WorkflowState(BaseModel):
     # Memory context
     episodic_memory: List[Dict[str, Any]] = []
     visual_memory: List[Dict[str, Any]] = []
+    
+    # Workflow control
+    workflow_complete: bool = False
 
 
 class LogEntry(BaseModel):

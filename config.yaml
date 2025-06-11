@@ -38,5 +38,4 @@ models:
   renderer_edit:   gpt-image-1
   fast_qa:         gpt-4o
   vision_qa:       gpt-4o
-  script_parser:   gpt-4o
-  ref_tagger:      gpt-4o 
+  ref_tagger:     gpt-4o 

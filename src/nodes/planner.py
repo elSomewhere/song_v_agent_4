@@ -152,7 +152,7 @@ def _build_planner_context(state: WorkflowState, current_scene: Any,
     if nearby_frames:
         frame_summaries = []
         for frame in nearby_frames[:3]:  # Limit to 3 most recent
-            summary = f"Scene {frame['scene_id']} Shot {frame['shot_id']}: {frame['prompt'][:100]}..."
+            summary = f"Scene {frame['scene_id']} Shot {frame.get('shot_id', '?')}: {frame.get('prompt', '')[:100]}..."
             frame_summaries.append(summary)
         context["frames_summary"] = "\n".join(frame_summaries)
     else:

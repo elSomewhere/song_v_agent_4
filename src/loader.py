@@ -19,12 +19,15 @@ class Loader:
         self.config = self._load_config(config_path)
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
-        if not Path(config_path).exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-        
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
+        """Load configuration from YAML file or fallback to default."""
+        if Path(config_path).exists():
+            with open(config_path, 'r') as f:
+                return yaml.safe_load(f)
+
+        # Fallback to built-in defaults (no external file)
+        from src.default_config import DEFAULT_CONFIG  # delayed import to avoid cycles
+        print(f"[Loader] Config file '{config_path}' not found — using built-in defaults.")
+        return DEFAULT_CONFIG.copy()
     
     def validate_inputs(self, script_path: str, style_path: str, 
                        entities_path: str, refs_dir: Optional[str] = None) -> None:
@@ -106,13 +109,14 @@ class Loader:
     
     def initialize_state(self, script_path: str, style_path: str,
                         entities_path: str, refs_dir: Optional[str] = None,
+                        output_base_dir: str = "output",
                         config_overrides: Optional[Dict[str, Any]] = None) -> WorkflowState:
         """Initialize workflow state with inputs and configuration."""
         # Validate inputs
         self.validate_inputs(script_path, style_path, entities_path, refs_dir)
         
         # Create output directory
-        output_dir = self.create_output_directory()
+        output_dir = self.create_output_directory(output_base_dir)
         
         # Load input files
         inputs = self.load_input_files(script_path, style_path, entities_path)

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
+from concurrent.futures import ProcessPoolExecutor
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 
@@ -16,6 +17,7 @@ from src.preprocess import ScriptPreprocessor, ReferencePreprocessor
 from src.memory import MemoryService
 from src.models import WorkflowState, Metrics
 from src.utils import log_entry, save_workflow_state, ensure_directory
+from src.metrics import MetricsCollector
 
 # Import workflow nodes
 from src.nodes.planner import planner_node
@@ -26,6 +28,7 @@ from src.nodes.fast_qa import fast_qa_node
 from src.nodes.vision_qa import vision_qa_node
 from src.nodes.policy import policy_node
 from src.nodes.memory_update import memory_update_node
+from src.nodes.workflow_controller import workflow_controller_node
 
 
 def preprocess_script_node(state: WorkflowState) -> WorkflowState:
@@ -62,142 +65,105 @@ def preprocess_refs_node(state: WorkflowState) -> WorkflowState:
     return state
 
 
+def should_sample_vision_qa(state: WorkflowState) -> str:
+    """Conditional edge after fast_qa to either vision_qa or policy."""
+    return "vision_qa" if state.fast_qa_flag else "policy"
+
+
+def should_retry_or_update(state: WorkflowState) -> str:
+    """Conditional edge after policy to either retry or update memory."""
+    if state.policy_action in {"retry_new", "retry_edit"}:
+        return "renderer"
+    else:  # accept or give_up
+        return "memory_update"
+
+
 def should_continue_workflow(state: WorkflowState) -> str:
-    """Determine next step in workflow based on state."""
-    
-    # Check if we're done with all scenes
-    if state.current_scene_idx >= len(state.scenes):
+    """Conditional edge after memory_update to continue or end."""
+    if state.workflow_complete:
         return "end"
-    
-    # Check policy action
-    if state.policy_action == "accept":
-        # Check if more variations to process
-        if state.current_variation_idx < len(state.variations) - 1:
-            return "renderer"  # Process next variation
-        else:
-            return "planner"  # Start new shot
-    elif state.policy_action == "retry_new":
-        return "renderer"  # Retry rendering
-    elif state.policy_action == "retry_edit":
-        return "renderer"  # Retry with edit
-    elif state.policy_action == "give_up":
-        # Check if more variations to try
-        if state.current_variation_idx < len(state.variations) - 1:
-            return "renderer"  # Try next variation
-        else:
-            return "planner"  # Start new shot
     else:
-        # No policy action yet, continue normal flow
-        if not state.current_plan:
-            return "planner"
-        elif not state.reviewed_plan:
-            return "reviewer"
-        elif not state.variations:
-            return "variation_mgr"
-        elif not state.current_image_b64:
-            return "renderer"
-        elif not state.fast_qa_result:
-            return "fast_qa"
-        elif state.fast_qa_flag and not state.vision_qa_result:
-            return "vision_qa"
-        else:
-            return "policy"
+        return "workflow_controller"
+
+
+def should_controller_to_planner(state: WorkflowState) -> str:
+    """Conditional edge after workflow_controller."""
+    if state.workflow_complete:
+        return "end"
+    else:
+        return "planner"
 
 
 def build_workflow() -> StateGraph:
-    """Build the LangGraph workflow."""
+    """Build the LangGraph workflow exactly as specified in section 5."""
     
     # Create the graph
-    workflow = StateGraph(WorkflowState)
+    graph = StateGraph(WorkflowState)
     
-    # Add preprocessing nodes
-    workflow.add_node("preprocess_script", preprocess_script_node)
-    workflow.add_node("preprocess_refs", preprocess_refs_node)
-    
-    # Add main workflow nodes
-    workflow.add_node("planner", planner_node)
-    workflow.add_node("reviewer", reviewer_node)
-    workflow.add_node("variation_mgr", variation_mgr_node)
-    workflow.add_node("renderer", renderer_node)
-    workflow.add_node("fast_qa", fast_qa_node)
-    workflow.add_node("vision_qa", vision_qa_node)
-    workflow.add_node("policy", policy_node)
-    workflow.add_node("memory_update", memory_update_node)
+    # Bootstrap nodes
+    graph.add_node("preprocess_script", preprocess_script_node)
+    graph.add_node("preprocess_refs", preprocess_refs_node)
     
     # Set entry point
-    workflow.set_entry_point("preprocess_script")
+    graph.set_entry_point("preprocess_script")
     
-    # Add edges
-    workflow.add_edge("preprocess_script", "preprocess_refs")
-    workflow.add_edge("preprocess_refs", "planner")
+    # Bootstrap edges
+    graph.add_edge("preprocess_script", "preprocess_refs")
+    graph.add_edge("preprocess_refs", "planner")
     
-    # Main loop edges
-    workflow.add_edge("planner", "reviewer")
-    workflow.add_edge("reviewer", "variation_mgr")
-    workflow.add_edge("variation_mgr", "renderer")
-    workflow.add_edge("renderer", "fast_qa")
-    workflow.add_edge("fast_qa", "vision_qa")
-    workflow.add_edge("vision_qa", "policy")
-    workflow.add_edge("policy", "memory_update")
+    # Main loop nodes - exactly as specified
+    for name, node in [
+        ("planner", planner_node),
+        ("reviewer", reviewer_node),
+        ("variation_mgr", variation_mgr_node),
+        ("renderer", renderer_node),
+        ("fast_qa", fast_qa_node),
+        ("vision_qa", vision_qa_node),
+        ("policy", policy_node),
+        ("memory_update", memory_update_node),
+        ("workflow_controller", workflow_controller_node)
+    ]:
+        graph.add_node(name, node)
     
-    # Conditional routing from memory_update
-    workflow.add_conditional_edges(
-        "memory_update",
-        should_continue_workflow,
-        {
-            "planner": "planner",
-            "renderer": "renderer",
-            "end": END
-        }
-    )
+    # Main loop edges - exactly as specified
+    graph.add_edge("planner", "reviewer")
+    graph.add_edge("reviewer", "variation_mgr")
+    graph.add_edge("variation_mgr", "renderer")
+    graph.add_edge("renderer", "fast_qa")
     
-    return workflow.compile()
+    # Conditional edges as specified
+    graph.add_conditional_edges("fast_qa", should_sample_vision_qa)
+    graph.add_edge("vision_qa", "policy")
+    graph.add_conditional_edges("policy", should_retry_or_update)
+    
+    # Memory update continues to workflow controller
+    graph.add_conditional_edges("memory_update", should_continue_workflow)
+    
+    # Workflow controller back to planner or END
+    graph.add_conditional_edges("workflow_controller", should_controller_to_planner)
+    
+    return graph.compile()
 
 
 def generate_final_report(state: WorkflowState) -> None:
-    """Generate final metrics and report."""
-    end_time = datetime.now()
-    elapsed = (end_time - state.start_time).total_seconds()
+    """Generate final metrics and report using MetricsCollector."""
+    # Use metrics collector
+    collector = MetricsCollector(state)
     
-    # Count model usage
-    model_usage = {}
-    for log in state.logs:
-        if log.get("model"):
-            model = log["model"]
-            model_usage[model] = model_usage.get(model, 0) + 1
+    # Save metrics.json
+    metrics_path = collector.save_metrics()
     
-    # Create metrics
-    metrics = Metrics(
-        run_id=state.trace_id,
-        start_time=state.start_time,
-        end_time=end_time,
-        elapsed_s=elapsed,
-        total_tokens=state.total_tokens,
-        total_cost_usd=state.total_cost,
-        scenes_processed=state.current_scene_idx + 1,
-        shots_generated=len(state.accepted_frames),
-        variations_created=sum(1 for log in state.logs if log.get("stage") == "variation_mgr"),
-        frames_accepted=len(state.accepted_frames),
-        frames_rejected=sum(1 for log in state.logs if log.get("stage") == "policy" and log.get("status") == "give_up"),
-        retry_attempts=sum(1 for log in state.logs if log.get("stage") == "policy" and log.get("status") == "retry_new"),
-        edit_attempts=sum(1 for log in state.logs if log.get("stage") == "policy" and log.get("status") == "retry_edit"),
-        accept_rate=len(state.accepted_frames) / max(1, len(state.accepted_frames) + sum(1 for log in state.logs if log.get("stage") == "policy" and log.get("status") == "give_up")),
-        models_used=model_usage
-    )
-    
-    # Save metrics
-    metrics_path = Path(state.output_dir) / "metrics.json"
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics.model_dump(), f, indent=2, default=str)
+    # Get metrics for report
+    metrics = collector.collect_from_logs()
     
     # Generate summary report
     report = f"""
 # VC-RAG-SBG Run Report
 
 **Run ID:** {state.trace_id}
-**Duration:** {elapsed:.1f} seconds
-**Total Cost:** ${state.total_cost:.2f}
-**Total Tokens:** {state.total_tokens:,}
+**Duration:** {metrics.elapsed_s:.1f} seconds
+**Total Cost:** ${metrics.total_cost_usd:.2f}
+**Total Tokens:** {metrics.total_tokens:,}
 
 ## Generation Stats
 - Scenes Processed: {metrics.scenes_processed}
@@ -214,7 +180,7 @@ def generate_final_report(state: WorkflowState) -> None:
 ## Model Usage
 """
     
-    for model, count in model_usage.items():
+    for model, count in metrics.models_used.items():
         report += f"- {model}: {count} calls\n"
     
     report += f"\n## Output Location\n{state.output_dir}\n"
@@ -223,6 +189,9 @@ def generate_final_report(state: WorkflowState) -> None:
     report_path = Path(state.output_dir) / "report.md"
     with open(report_path, 'w') as f:
         f.write(report)
+    
+    # Append detailed metrics
+    collector.append_to_report(report_path)
     
     print(f"\n{'='*50}")
     print(report)
@@ -236,40 +205,52 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="VC-RAG-SBG: Visual-Context-Aware RAG Storyboard Generator")
-    parser.add_argument("--script", default="data/script.md", help="Path to script markdown file")
-    parser.add_argument("--style", default="data/style.md", help="Path to style markdown file")
-    parser.add_argument("--entities", default="data/entities.md", help="Path to entities markdown file")
-    parser.add_argument("--refs", default="data/refs", help="Path to reference images directory")
-    parser.add_argument("--budget", type=float, help="Budget in USD (overrides config)")
-    parser.add_argument("--variations", type=int, help="Number of variations per shot (overrides config)")
+    parser.add_argument("--data", required=True, help="Path to data directory")
+    parser.add_argument("--out", required=True, help="Path to output directory")
+    parser.add_argument("--n-variations", type=int, default=3, help="Number of variations per shot")
+    parser.add_argument("--max-retries", type=int, default=2, help="Maximum retry attempts")
+    parser.add_argument("--budget-usd", type=float, default=35, help="Budget in USD")
+    parser.add_argument("--ai-preprocess-script", action="store_true", help="Use AI to preprocess script")
+    parser.add_argument("--ai-preprocess-refs", action="store_true", help="Use AI to preprocess references")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
-    parser.add_argument("--no-refs", action="store_true", help="Skip reference image processing")
     
     args = parser.parse_args()
     
     # Check OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY not found in environment variables.")
-        print("Please create a .env file with your OpenAI API key.")
+        print("Please set OPENAI_API_KEY environment variable.")
         sys.exit(1)
     
     # Initialize loader
     loader = Loader(args.config)
     
+    # Build paths
+    data_path = Path(args.data)
+    script_path = data_path / "script.md"
+    style_path = data_path / "style.md"
+    entities_path = data_path / "entities.md"
+    refs_dir = data_path / "refs" if (data_path / "refs").exists() else None
+    
     # Build config overrides
-    config_overrides = {}
-    if args.budget:
-        config_overrides["budget_usd"] = args.budget
-    if args.variations:
-        config_overrides["n_variations"] = args.variations
+    config_overrides = {
+        "budget_usd": args.budget_usd,
+        "n_variations": args.n_variations,
+        "max_retries": args.max_retries,
+        "preprocess": {
+            "script": "auto" if args.ai_preprocess_script else "heuristic",
+            "refs": "auto" if args.ai_preprocess_refs else "skip"
+        }
+    }
     
     # Initialize workflow state
     try:
         state = loader.initialize_state(
-            script_path=args.script,
-            style_path=args.style,
-            entities_path=args.entities,
-            refs_dir=None if args.no_refs else args.refs,
+            script_path=str(script_path),
+            style_path=str(style_path),
+            entities_path=str(entities_path),
+            refs_dir=str(refs_dir) if refs_dir else None,
+            output_base_dir=args.out,
             config_overrides=config_overrides
         )
     except Exception as e:
@@ -286,8 +267,8 @@ def main():
     workflow = build_workflow()
     
     try:
-        # Run the workflow
-        final_state = workflow.invoke(state, {"recursion_limit": 50})
+        # Run the workflow with increased recursion limit for multi-scene runs
+        final_state = workflow.invoke(state, {"recursion_limit": 1000})
         
         # Generate final report
         generate_final_report(final_state)
