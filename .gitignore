@@ -52,3 +52,5 @@ logs/
 
 .env
 example.env
+
+data/
