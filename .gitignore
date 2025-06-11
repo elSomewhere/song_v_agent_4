@@ -54,3 +54,4 @@ logs/
 example.env
 
 data/
+output/
