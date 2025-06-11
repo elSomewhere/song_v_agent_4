@@ -37,5 +37,6 @@ DEFAULT_CONFIG = {
         # Additional internal keys used by code (not in original spec)
         "script_parser": "gpt-4o",  # alias for planner
         "ref_tagger": "gpt-4o-vision-preview",  # alias for vision model
+        "reranker_cross_modal": "gpt-4o-vision-preview",
     },
 } 

@@ -9,7 +9,7 @@ import pyarrow as pa
 from datetime import datetime
 
 from src.models import RefMeta, WorkflowState
-from src.utils import get_openai_client, call_openai_with_retry, calculate_cost, log_entry
+from src.utils import get_openai_client, call_openai_with_retry, calculate_cost, log_entry, load_image_as_base64, parse_json_response
 
 
 class MemoryService:
@@ -197,6 +197,41 @@ class MemoryService:
         if img_df is not None and not img_df.empty:
             img_results = sorted(img_df.itertuples(), key=score_img, reverse=True)[:k_img]
         
+        # ----- Cross-modal reranking ----------------------------------
+        try:
+            # Convert namedtuples to dicts for reranker
+            cmd_candidates = []
+            for cand in list(txt_results) + list(img_results):
+                if hasattr(cand, "_asdict"):
+                    cand_dict = cand._asdict()
+                else:
+                    cand_dict = dict(cand)
+                # need thumb_path for images; skip if missing
+                if cand_dict.get("thumb_path"):
+                    cmd_candidates.append(cand_dict)
+
+            if cmd_candidates:
+                shot_desc = f"Shot {shot_id} | entities: {', '.join(entities)}"
+                reranked = self._cross_modal_rerank(
+                    shot_desc,
+                    cmd_candidates,
+                    top_k=k_txt + k_img,
+                )
+
+                # preserve ordering in txt_results if they were not re-ranked
+                img_ranked_ids = {c["frame_id"] for c in reranked if c.get("frame_id")}
+                img_results = [c for c in img_results if c.frame_id in img_ranked_ids]
+                # match order from reranked list
+                img_results.sort(
+                    key=lambda r: next(
+                        (i for i, c in enumerate(reranked) if c.get("frame_id") == r.frame_id),
+                        len(reranked)
+                    )
+                )
+        except Exception as re_err:
+            # fallback to heuristic order
+            log_entry(self.state, "cm_rerank", "error", error=str(re_err))
+
         return txt_results, img_results
     
     def _jaccard(self, set1: set, set2: set) -> float:
@@ -377,4 +412,113 @@ class MemoryService:
             return sim * (0.5 + 0.5 * conf)
 
         ranked = sorted(df.itertuples(), key=_score, reverse=True)[:limit]
-        return [r._asdict() for r in ranked] 
+        return [r._asdict() for r in ranked]
+
+    # -----------------------------------------------------------------  # Constants for cross-modal reranking
+    MAX_VISION_BATCH = 8   # gpt-4o-vision supports up to 8 images / call
+    CM_TOP_K = 8           # keep best K candidates after re-rank
+
+    # -----------------------------------------------------------------
+    def _cross_modal_rerank(
+        self,
+        shot_desc: str,
+        candidates: List[Dict[str, Any]],
+        top_k: int = None,
+        model: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Re-order ANN hits via gpt-4o-vision preview.
+
+        Each candidate dict **must** contain a `thumb_path` pointing to a small
+        JPG.  Returns the same list sorted by model-given score (descending).
+        Any candidate lacking a score is assumed 0 and kept at the end.
+        """
+        top_k = top_k or self.CM_TOP_K
+        model = model or self.state.config["models"].get("reranker_cross_modal", self.state.config["models"]["vision_qa"])
+
+        client = get_openai_client()
+        ranked_all: List[Dict[str, Any]] = []
+
+        for offset in range(0, len(candidates), self.MAX_VISION_BATCH):
+            batch = candidates[offset : offset + self.MAX_VISION_BATCH]
+            if not batch:
+                continue
+
+            # Assign labels A, B, C … to keep the JSON reply short
+            label_map = {chr(65 + i): c for i, c in enumerate(batch)}
+            content_block: List[Dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"{shot_desc}\n\n"
+                        "TASK: For each reference image labelled below, return JSON "
+                        "{\"id\": \"A\", \"score\": 0-100} where 100 = perfect match.\n"
+                        "Respond with ONLY a JSON array."
+                    ),
+                }
+            ]
+
+            # Attach images
+            for lbl, cand in label_map.items():
+                try:
+                    b64 = load_image_as_base64(cand["thumb_path"])
+                except Exception:
+                    # Skip candidates lacking a valid thumbnail
+                    continue
+                cand["_lbl"] = lbl
+                content_block.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}",
+                            "detail": "low",
+                        },
+                    }
+                )
+
+            try:
+                resp = call_openai_with_retry(
+                    client,
+                    model=model,
+                    messages=[{"role": "user", "content": content_block}],
+                    temperature=0.0,
+                    max_tokens=120,
+                )
+                data = parse_json_response(resp.choices[0].message.content)
+            except Exception as e:
+                # On any failure, return original ordering for remaining candidates
+                log_entry(
+                    self.state,
+                    "cm_rerank",
+                    "error",
+                    error=str(e),
+                    extra={"batch": len(batch)},
+                )
+                ranked_all.extend(batch)
+                continue
+
+            # Map scores back
+            if isinstance(data, list):
+                for item in data:
+                    lbl = item.get("id") or item.get("label")
+                    score = float(item.get("score", 0)) if isinstance(item, dict) else 0
+                    cand = label_map.get(lbl)
+                    if cand is not None:
+                        cand["_cm_score"] = score
+
+            # token estimate: ~85 per image + overhead 50
+            cost_usd = ((len(label_map) * 85 + 50) / 1000) * 0.01
+            self.state.total_cost += cost_usd
+            log_entry(
+                self.state,
+                "cm_rerank",
+                "success",
+                model=model,
+                cost_usd=cost_usd,
+                extra={"batch": len(label_map)},
+            )
+
+            ranked_all.extend(batch)
+
+        # Final global sort
+        ranked_all.sort(key=lambda c: -c.get("_cm_score", 0))
+        return ranked_all[: top_k] 
