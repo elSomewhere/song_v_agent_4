@@ -1,0 +1,525 @@
+**Visual-Context-Aware Retrieval-Augmented-Generation Storyboard Generator**
+**GPT-Only Edition — 2025-06-11**
+
+---
+
+## Table of Contents
+
+0. Quick-Start
+1. System Overview
+2. Detailed Architecture
+     2.1 High-Level Flow
+     2.2 Per-Shot Sequence
+     2.3 Component Responsibilities
+3. Memory & Storage
+4. API Contracts
+5. Workflow Graph (LangGraph)
+6. Prompt Engineering
+7. Configuration Surface
+8. Error-Handling & Retry Logic
+9. Observability & Telemetry
+10. Testing Matrix
+11. Deployment & Ops (Local)
+12. Roadmap
+13. Build Checklist
+
+---
+
+<a id="0"></a>
+
+## 0 · Quick-Start (Happy Path)
+
+```bash
+# 1 — clone
+git clone https://github.com/your-org/vc-rag-sbg.git && cd vc-rag-sbg
+
+# 2 — venv
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt        # openai, pillow, lancedb, langgraph, tenacity, jsonlines …
+
+# 3 — creds
+export OPENAI_API_KEY="sk-…"
+
+# 4 — drop your assets
+project/
+└── data/
+    ├── script.md
+    ├── style.md
+    ├── entities.md
+    └── refs/                      # any filenames, any formats (.png .jpg .webp)
+         ├── helena_vs_fortress.png
+         ├── silicate_army.jpg
+         └── scene_32.webp
+
+# 5 — run!
+python run.py \
+  --data  project/data \
+  --out   project/output \
+  --n-variations 3 \
+  --max-retries  2 \
+  --budget-usd   35 \
+  --ai-preprocess-script \
+  --ai-preprocess-refs
+```
+
+Example output:
+
+```
+project/output/run_2025-06-11T15-04-09Z/
+├── scene_001/
+│   ├── shot_01_main.png
+│   ├── shot_01_var1.png
+│   ├── shot_01_var2.png
+│   └── shot_01_meta.json
+├── scene_002/…
+├── logs.jsonl
+└── metrics.json
+```
+
+Delete `output/` and `.cache/` to wipe all state.
+
+---
+
+<a id="1"></a>
+
+## 1 · System Overview
+
+| Attribute          | Value                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| **Inputs**         | `script.md`, `style.md`, `entities.md`, optional `refs/` (arbitrary filenames)        |
+| **Outputs**        | Hierarchical PNGs + JSON under `output/`                                              |
+| **Compute model**  | Single Python 3.11 process; `ProcessPoolExecutor` overlaps image-generation API calls |
+| **Vector store**   | In-process LanceDB (`.cache/lancedb/`)                                                |
+| **External I/O**   | HTTPS → **OpenAI APIs only**                                                          |
+| **Persistence**    | Ephemeral; delete `output/` + `.cache/` to wipe state                                 |
+| **Cost controls**  | USD budget per run, token caps per shot                                               |
+| **Main loop**      | Planner → Reviewer → VariationMgr → Renderer → Fast-QA → (sample) Vision-QA → Policy  |
+| **Local binaries** | Pillow (thumbnails) only — **no PyTorch, no transformers**                            |
+
+---
+
+<a id="2"></a>
+
+## 2 · Detailed Architecture
+
+### 2.1 High-Level Flow
+
+```
+┌── Loader ─────────┐
+│ validate inputs   │
+└────────┬──────────┘
+         ▼
+┌ AI Pre-Processing ─┐
+│ script.md  → JSON │
+│ refs/*     → JSON │  ◄─ GPT-4o-vision + text-embedding-3-large
+└─────┬──────────────┘
+      ▼
+┌ Controller / State │
+│   LangGraph DAG    │
+└─────┬──────────────┘
+      ▼
+┌ LanceDB (.cache/) ┐
+│ episodic + visual │
+└───────────────────┘
+```
+
+### 2.2 Per-Shot Sequence
+
+1. **Hybrid Retrieve** (text *k* + image *m*)
+2. **Planner** → base `ScenePlan`
+3. **VariationMgr** → `[ScenePlan 0…n-1]`
+4. **Reviewer** (per variation)
+5. **Renderer** (`mode="new"` or `"edit"`)
+6. **Fast-QA** (cheap GPT-vision “pass / fail”)
+7. *(sampling)* **Vision-QA** deep audit
+8. **Policy** — accept / retry\_edit / retry\_new / give\_up
+9. **Memory Update** — LanceDB rows + thumbnail
+
+### 2.3 Component Responsibilities
+
+| Component             | Duties & Model Calls                                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Loader**            | Validate required files, build `.cache/`                                                                                                             |
+| **PreprocessScript**  | Heuristic parser ➜ *fallback* **gpt-4o** (`/chat/completions`)                                                                                       |
+| **PreprocessRefs**    | **gpt-4o-vision-preview** caption + classification → tags/entity/categories<br>Embed **caption + tags** text via **text-embedding-3-large** (1536-D) |
+| **MemoryService**     | LanceDB hybrid search; stores thumbnails                                                                                                             |
+| **Planner**           | **gpt-4o**                                                                                                                                           |
+| **Prompt-Reviewer**   | **gpt-4o**                                                                                                                                           |
+| **VariationManager**  | **gpt-4o**                                                                                                                                           |
+| **Renderer**          | **gpt-image-1** (`/images/generations`) for new frames<br>**gpt-image-1** (`/images/edit`) for fixes                                                 |
+| **Fast-QA**           | **gpt-4o-vision-preview**; 5-token prompt; pass/fail only                                                                                            |
+| **Vision-QA**         | **gpt-4o-vision-preview** deep checklist                                                                                                             |
+| **Policy**            | Rule-based Python                                                                                                                                    |
+| **Metrics Collector** | Aggregate tokens / USD / latency to `metrics.json`                                                                                                   |
+
+---
+
+<a id="3"></a>
+
+## 3 · Memory & Storage
+
+### 3.1 Directory Layout
+
+```
+.cache/
+  ├── lancedb/                        # Arrow tables
+  ├── thumbs/<frame_id>.jpg           # 600-px thumbnails
+  ├── structured_scenes.json          # parsed script
+  └── ref_index.parquet               # tagged refs
+output/
+  └── run_<timestamp>/…               # PNGs, per-shot JSON, logs, metrics
+```
+
+### 3.2 LanceDB Schemas
+
+| Table            | PK         | Columns (top-level only)                                                                                              |
+| ---------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `canonical_text` | `chunk_id` | `chunk_text`, `text_embedding(1536f)`                                                                                 |
+| `episodic_text`  | `scene_id` | `shot_id`, `summary`, `text_embedding`, `entities[]`, `timestamp`, `quality_score`                                    |
+| `visual_ctx`     | `frame_id` | `scene_id`, `clip_embedding(1536f)`, `thumb_path`, `trace_id`, `category`, `entity`, `tags[]`, `source`, `confidence` |
+| `failures`       | `frame_id` | `err_code`, `neg_prompt_token`, `timestamp`                                                                           |
+
+`category` ∈ {`character`,`environment`,`props`,`other`}. `source` ∈ {`user_upload`,`generated`}.
+
+### 3.3 Reference Tagger (GPT-only)
+
+```python
+def tag_reference(img_path: Path):
+    b64 = encode_image_to_base64(img_path)
+    prompt = f"""
+Analyse this storyboard still.
+
+TASK:
+1. Classify: CHARACTER, ENVIRONMENT, PROPS or OTHER.
+2. If CHARACTER/ENVIRONMENT, give a 1–3-word canonical name; else "unknown".
+3. List 3–5 descriptive tags (comma-sep).
+4. Return JSON with keys: category, entity, tags[], confidence (0–1)."""
+    resp = openai.chat.completions.create(
+        model="gpt-4o-vision-preview",
+        messages=[
+          {"role":"system","content":"You tag storyboard references."},
+          {"role":"user","content":[
+              {"type":"image_url","image_url":{"url":f"data:image/jpeg;base64,{b64}"}},
+              {"type":"text","text":prompt}]}
+        ],
+        max_tokens=120,
+        temperature=0)
+    meta = json.loads(resp.choices[0].message.content)
+
+    # text embedding (caption + tags)
+    caption_text = f"{meta['entity']}. " + ", ".join(meta["tags"])
+    emb = openai.embeddings.create(
+            model="text-embedding-3-large",
+            input=caption_text).data[0].embedding        # 1536-float list
+    return RefMeta(**meta, clip_embedding=emb)
+```
+
+### 3.4 Hybrid Retrieve
+
+```python
+def hybrid_retrieve(scene_embed, entities, shot_id,
+                    k_txt=5, k_img=3):
+    txt_hits = episodic_text.search(scene_embed,'text_embedding').limit(k_txt*3)
+    img_hits = visual_ctx. search(scene_embed,'clip_embedding').limit(k_img*3)
+
+    def score_txt(r):
+        sem = 1 - r._distance
+        ent = jaccard(set(r.entities), set(entities))
+        rec = 1/(1+abs(shot_id-r.shot_id)/100)
+        return 0.6*sem + 0.3*ent + 0.1*rec
+
+    def score_img(r):
+        sim = 1 - r._distance
+        conf = 0.5 + 0.5*r.confidence
+        boost = 1.2 if r.entity in entities else 1.0
+        return sim * conf * boost
+
+    txt = sorted(txt_hits.to_pandas().itertuples(), key=score_txt , reverse=True)[:k_txt]
+    img = sorted(img_hits.to_pandas().itertuples(), key=score_img, reverse=True)[:k_img]
+    return txt, img
+```
+
+---
+
+<a id="4"></a>
+
+## 4 · API Contracts (Pydantic)
+
+### 4.1 Reference Row
+
+```jsonc
+RefMeta {
+  "frame_id":"uuid",
+  "category":"character|environment|props|other",
+  "entity":"Helena",
+  "tags":["wide","battle","dusk"],
+  "confidence":0.91,
+  "clip_embedding":[…1536 floats…],
+  "thumb_path":".cache/thumbs/<id>.jpg",
+  "source":"user_upload",
+  "original_path":"data/refs/helena.png"
+}
+```
+
+### 4.2 Planner
+
+```jsonc
+ScenePlan {
+  "scene_id":12,
+  "shot_id":45,
+  "entities":[{"name":"Sara","pose":"running","emotion":"fear"}],
+  "camera":{"type":"tracking","angle":"low","distance":"full"},
+  "image_prompt":"Cinematic 35 mm film still …"
+}
+```
+
+*(See models.py for full schema.)*
+
+### 4.3 QA Result
+
+```jsonc
+QAResult {
+  "status":"pass | retry | fail",
+  "quality_score":0.83,
+  "specific_issues":["Sara eyes closed"],
+  "retry_guidance":"open Sara's eyes; warmer light"
+}
+```
+
+All other contracts mirror those in `models.py`.
+
+---
+
+<a id="5"></a>
+
+## 5 · Workflow Graph (LangGraph DSL)
+
+```python
+graph = StateGraph(WorkflowState)
+
+# bootstrap
+graph.add_node("preprocess_script", preprocess_script_node)
+graph.add_node("preprocess_refs",   preprocess_refs_node)
+graph.add_edge("preprocess_script","preprocess_refs")
+graph.add_edge("preprocess_refs","planner")
+graph.set_entry_point("preprocess_script")
+
+# main loop
+for name,node in [
+  ("planner",planner_node), ("reviewer",reviewer_node),
+  ("variation_mgr",variation_mgr_node), ("renderer",renderer_node),
+  ("fast_qa",fast_qa_node), ("vision_qa",vision_qa_node),
+  ("policy",policy_node), ("memory_update",memory_update_node)
+]: graph.add_node(name,node)
+
+graph.add_edge("planner","reviewer")
+graph.add_edge("reviewer","variation_mgr")
+graph.add_edge("variation_mgr","renderer")
+graph.add_edge("renderer","fast_qa")
+graph.add_edge("fast_qa","vision_qa", condition=lambda s:s.fast_qa_flag)
+graph.add_edge("fast_qa","policy",    condition=lambda s:not s.fast_qa_flag)
+graph.add_edge("vision_qa","policy")
+graph.add_edge("policy","renderer",       condition=lambda s:s.policy_action in {"retry_new","retry_edit"})
+graph.add_edge("policy","memory_update",  condition=lambda s:s.policy_action in {"accept","give_up"})
+graph.add_edge("memory_update", END)
+```
+
+---
+
+<a id="6"></a>
+
+## 6 · Prompt Engineering
+
+### 6.1 Global `system` Prompt (Planner, Reviewer, Renderer)
+
+```
+You are a senior storyboard artist.
+• Always match the established visual language.
+• Output must be a single finished frame (no text, no watermark).
+• 16:9, minimum 1920×1080.
+```
+
+### 6.2 Reference Block (Reviewer injects)
+
+```
+<REFERENCE_IMAGES>
+{ref_1_url}
+{ref_2_url}
+{ref_3_url}
+</REFERENCE_IMAGES>
+```
+
+### 6.3 User Prompt to Renderer
+
+```
+{scene_plan.image_prompt}
+
+<NEGATIVE>{negative_prompt}</NEGATIVE>
+```
+
+Fast-QA uses a **5-token** vision prompt:
+“pass if clean, fail if blurry / broken.”
+
+---
+
+<a id="7"></a>
+
+## 7 · Configuration Surface (`config.yaml` defaults)
+
+```yaml
+################################
+# context windows
+ctx_images:      3
+ctx_window:      4
+token_cap:       4000          # GPT call cap
+
+################################
+# variations
+n_variations:          3
+variation_camera:      full     # full | angle_only | composition_only
+
+################################
+# retries
+max_retries:      2
+max_edit_retries: 1
+
+################################
+# AI pre-processing
+preprocess:
+  script:       auto
+  refs:         auto
+  max_tokens_script: 1000
+  max_tokens_refs:   2000
+  tag_confidence_threshold: 0.50
+
+################################
+# budget
+budget_usd: 35
+
+################################
+# model map (explicit — do NOT swap)
+models:
+  embedding_text:  text-embedding-3-large
+  planner:         gpt-4o
+  reviewer:        gpt-4o
+  variation_mgr:   gpt-4o
+  renderer_new:    gpt-image-1          # never "dall-e-3"
+  renderer_edit:   gpt-image-1
+  fast_qa:         gpt-4o-vision-preview
+  vision_qa:       gpt-4o-vision-preview
+```
+
+---
+
+<a id="8"></a>
+
+## 8 · Error-Handling & Retry Logic
+
+| Event / Error                 | Strategy                                             |
+| ----------------------------- | ---------------------------------------------------- |
+| GPTRateLimit / APIError       | Retry ×3 (exponential back-off: 2 s → 32 s)          |
+| Reference-tagging failure     | Row stored with `confidence=0.0`, pipeline continues |
+| Fast-QA “fail” + retries left | Renderer re-runs (`mode="edit"` if guidance present) |
+| Budget exceeded               | Immediate graceful stop; flush metrics               |
+| Disk-write error              | Abort run, print partial output path                 |
+
+---
+
+<a id="9"></a>
+
+## 9 · Observability & Telemetry
+
+* **logs.jsonl** — 1 line per OpenAI call (`trace_id`, stage, tokens, cost, latency, status, …)
+* **metrics.json** — run-level summary (`tokens`, `usd`, `elapsed_s`, `shots`, `accept_rate`, …)
+* **Console** — `tqdm` progress bar with scene/shot, retries, budget left, ETA
+
+Example ref log:
+
+```json
+{"ts":"2025-06-11T15:04:05.987Z","stage":"preprocess_refs",
+ "file":"helena_vs_fortress.png","category":"character","entity":"Helena",
+ "tags":["wide","battle","dusk"],"confidence":0.91,"tokens":890,"cost_usd":0.0118,
+ "latency_ms":3700,"status":"success"}
+```
+
+---
+
+<a id="10"></a>
+
+## 10 · Testing Matrix
+
+### 10.1 Unit Tests
+
+| File                                  | Purpose                                                              |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| `tests/test_loader_missing_files.py`  | Verify graceful failure if `script.md` is missing                    |
+| `tests/test_vision_tagger_quality.py` | ≥ 90 % F1 for entity detection on 100-image gold set (GPT-only path) |
+| `tests/test_low_confidence_flag.py`   | Low-confidence refs down-weighted in retrieval                       |
+| `tests/test_variations_count.py`      | `VariationManager` returns `n_variations` exactly                    |
+| `tests/test_budget_stop.py`           | Run with `--budget-usd 0.01` stops early and writes metrics          |
+
+### 10.2 Integration
+
+* 3-scene toy script → expect `3 × n_variations` accepted frames, correct tags
+* Network blip during ref tagging → pipeline continues
+* Corrupt image injection → tagger returns `confidence=0.0`, retrieval still works
+
+### 10.3 Load
+
+* 50 shots/minute → p95 planner < 1.5 s, renderer < 3.0 s (*network-bound*)
+
+---
+
+<a id="11"></a>
+
+## 11 · Deployment & Ops (Local)
+
+| Layer             | Tech / Action                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| **Runtime**       | Python 3.11 CLI                                                                       |
+| **Process model** | Main thread runs LangGraph; `ProcessPoolExecutor(max_workers=4)` overlaps image calls |
+| **Virtual-env**   | `.venv/` pinned by `requirements.txt` (no torch)                                      |
+| **Secrets**       | `OPENAI_API_KEY` env var                                                              |
+| **Cleaning**      | `run.py` wipes `.cache/` unless `--keep-cache`                                        |
+| **CI/CD**         | GitHub Actions: `pytest` → integration smoke → version-tag                            |
+| **Packaging**     | `python -m build` produces a wheel                                                    |
+
+---
+
+<a id="12"></a>
+
+## 12 · Roadmap
+
+1. LanceDB → SQLite fallback
+2. MP4 animatic export (`ffmpeg`) from accepted frames
+3. Prometheus metrics endpoint (`:9090`)
+4. RL-based Policy to minimise retries & cost
+
+---
+
+<a id="13"></a>
+
+## 13 · Build Checklist
+
+| ✅ | Item                                                                                          |
+| - | --------------------------------------------------------------------------------------------- |
+| ☐ | `loader.py` — input validation, cache dirs                                                    |
+| ☐ | `preprocess.py` — heuristic parser + GPT-vision refs                                          |
+| ☐ | `memory.py` — LanceDB schema, hybrid retrieve                                                 |
+| ☐ | `models.py` — Pydantic schemas                                                                |
+| ☐ | `nodes/*` — planner, reviewer, variation\_mgr, renderer, fast\_qa, vision\_qa, policy, memory |
+| ☐ | `run.py` — CLI, LangGraph assembly, ProcessPoolExecutor                                       |
+| ☐ | Unit tests (section 10.1)                                                                     |
+| ☐ | Integration smoke (section 10.2)                                                              |
+| ☐ | `requirements.txt` — **no torch**, openai ≥ 1.14, lancedb 0.4.\*, pillow ≥ 10                 |
+| ☐ | 100-image gold fixture under `tests/data/refs_gold/`                                          |
+| ☐ | Example project under `examples/`                                                             |
+
+When every box is green, run:
+
+```bash
+python run.py --data examples/sci-fi/ --out examples/sci-fi/output \
+              --n-variations 4 --budget-usd 40 --ai-preprocess-script
+```
+
+Enjoy fully GPT-powered, context-aware storyboard generation — no local models, no hidden fallbacks, explicit model names throughout.

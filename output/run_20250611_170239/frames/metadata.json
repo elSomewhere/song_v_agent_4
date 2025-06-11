@@ -1,0 +1,118 @@
+{
+  "frames": [
+    {
+      "frame_id": "09386b87-ce51-41b4-9bce-61b6ffc11627",
+      "scene_id": 1,
+      "shot_id": 1,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space capturing a serene, lush planet filling the lower half of the frame. The planet is gently lit by the system's sun on one side, creating a faint glow. The top half of the frame is dominated by dark silhouettes of Silicate battleships hovering in a silent formation. The underbellies of these battleships exhibit subtle white metallic glimmers, indicating advanced technology. The overall mood is one of foreboding calm, emphasizing the enormous scale of the Silicate fleet. The image should convey a sense of vastness and serenity juxtaposed with the looming presence of the fleet. Ensure the scene is depicted with a hand-drawn, graphic novel/anime hybrid aesthetic, using a muted, desaturated color palette with cold blues, greys, and dark neutrals. Apply a slight grunge texture overlay for a worn, analog look, and maintain low overall brightness to contribute to a somber and moody atmosphere.",
+      "negative_prompt": "Avoid bright colors, overly sharp digital effects, and high brightness levels that could detract from the somber and moody atmosphere.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "above",
+        "distance": "extremely wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s1_sh1_v0_af9a1682.png",
+      "quality_score": 0.85,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "2f7bf7b4-b773-4970-8c04-579d75f327de",
+      "scene_id": 1,
+      "shot_id": 2,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space, capturing the serene, lush planet occupying the lower half of the frame. The planet is gently lit by the system's sun from one side, casting a faint glow over its surface, revealing lush greenery and vast oceans. Above, the dark silhouettes of the Silicate battleships fill the top half of the frame. These battleships, in silent formation, have underbellies that glimmer subtly with white metallic highlights, suggesting their advanced technology. The sun should be partially visible, providing a consistent light source. The overall mood is one of foreboding calm, emphasizing the enormous scale of the fleet against the smallness of the planet below.",
+      "negative_prompt": "Avoid bright, saturated colors and overly detailed textures that do not match the graphic novel/anime hybrid aesthetic. Do not include any elements that break the somber and moody atmosphere, such as bright lights or overly dynamic movements.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "top-down",
+        "distance": "extremely wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s1_sh2_v0_69c86313.png",
+      "quality_score": 0.85,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "9aaaa79d-e21c-4417-a5da-aa2eef9cddbd",
+      "scene_id": 1,
+      "shot_id": 3,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space, capturing the vastness and silence of the scene. The lower half of the frame is dominated by a serene, lush planet, displaying green and blue hues with cloud formations. The planet is gently lit by the system's sun, casting a soft, faint glow on its surface. Above, the dark, imposing silhouettes of the Silicate battleships hover in silent formation. Their underbellies exhibit subtle white metallic glimmers, suggesting advanced technology. The scene conveys a foreboding calm and emphasizes the enormous scale of the Silicate fleet. The background is the dark expanse of space, dotted with distant stars, enhancing the isolation and grandeur of the scene.",
+      "negative_prompt": "Avoid overly bright or saturated colors, excessive detail that detracts from the somber mood, and any elements that disrupt the sense of scale and isolation.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "wide-angle",
+        "distance": "extremely wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s1_sh3_v0_3cf057c9.png",
+      "quality_score": 0.9,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "6fac4eaa-81a0-43da-893a-d1f9d1bbb0db",
+      "scene_id": 2,
+      "shot_id": 1,
+      "variation_idx": 0,
+      "prompt": "A high-angle medium-wide shot of a massive battleship in space, viewed from slightly below its midsection. The ship's angular, reflective white plating stands out against the cold, bluish cosmic backdrop. The battleship's design is sleek and futuristic, with imposing weaponry visible. Soft glows from the ship's lights highlight the hull, vents, and turrets, casting subtle shadows that accentuate the vessel's size and intricate details. The setting conveys an ominous tension, emphasizing the disciplined, futuristic design typical of Silicate technology. Include a few small spacecraft or drones around the battleship to add scale and context.",
+      "negative_prompt": "Avoid overly bright lighting, excessive color saturation, and overly smooth textures that contradict the grunge aesthetic.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "medium-wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s2_sh1_v0_e197f084.png",
+      "quality_score": 0.9,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "d8669294-4ab8-446d-b9ec-1684c1816430",
+      "scene_id": 2,
+      "shot_id": 2,
+      "variation_idx": 0,
+      "prompt": "A high-angle medium-wide shot capturing a massive futuristic battleship. The perspective is from slightly below the vessel's midsection, emphasizing its size and dominance. The battleship is covered in angular, reflective white plating, with intricate details of imposing weaponry like turrets and vents. The environment has a cold, bluish cast due to the cosmic backdrop, contrasting with the battleship's lights softly illuminating its hull. The lighting highlights the ship's futuristic and disciplined Silicate design, creating an ominous tension. The cosmos around is dark with desaturated tones, enhancing the mood of threat and power. Ensure the battleship's design is consistent with the graphic novel/anime hybrid aesthetic, using heavy, bold linework with a slight texture.",
+      "negative_prompt": "Avoid overly bright or saturated colors, excessive detail that detracts from the main subject, and any elements that break the somber, moody atmosphere.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "medium-wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s2_sh2_v0_76efaeb9.png",
+      "quality_score": 0.85,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "9ddc4b72-3142-465c-ae65-34533ddd9750",
+      "scene_id": 2,
+      "shot_id": 3,
+      "variation_idx": 0,
+      "prompt": "A high-angle medium-wide shot of a massive battleship in space. The perspective is slightly below the vessel's midsection, emphasizing its colossal size and angular design. The ship's reflective white plating stands out starkly against the cosmic backdrop, with the cold, bluish cast of space creating an ominous atmosphere. The battleship's surface is intricately detailed, showcasing imposing weaponry, vents, and turrets, all softly illuminated by its own lights. The overall mood is tense, highlighting the futuristic and disciplined design of the Silicate technology. Ensure details align with the hand-drawn, graphic novel/anime hybrid aesthetic, using a muted, desaturated color palette with cold blues, greys, and dark neutrals.",
+      "negative_prompt": "Avoid overly bright or saturated colors, excessive detail that detracts from the main focus, and any elements that do not fit the hand-drawn, graphic novel/anime hybrid aesthetic.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "medium-wide",
+        "movement": null
+      },
+      "image_path": "output/run_20250611_170239/frames/frame_s2_sh3_v0_c5e646e5.png",
+      "quality_score": 0.9,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    }
+  ]
+}

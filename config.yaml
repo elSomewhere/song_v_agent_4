@@ -1,0 +1,42 @@
+################################
+# context windows
+ctx_images:      3
+ctx_window:      4
+token_cap:       4000          # GPT call cap
+
+################################
+# variations
+n_variations:          3
+variation_camera:      full     # full | angle_only | composition_only
+
+################################
+# retries
+max_retries:      2
+max_edit_retries: 1
+
+################################
+# AI pre-processing
+preprocess:
+  script:       auto
+  refs:         auto
+  max_tokens_script: 1000
+  max_tokens_refs:   2000
+  tag_confidence_threshold: 0.50
+
+################################
+# budget
+budget_usd: 35
+
+################################
+# model map (explicit — do NOT swap)
+models:
+  embedding_text:  text-embedding-3-large
+  planner:         gpt-4o
+  reviewer:        gpt-4o
+  variation_mgr:   gpt-4o
+  renderer_new:    gpt-image-1          # never "dall-e-3"
+  renderer_edit:   gpt-image-1
+  fast_qa:         gpt-4o
+  vision_qa:       gpt-4o
+  script_parser:   gpt-4o
+  ref_tagger:      gpt-4o 

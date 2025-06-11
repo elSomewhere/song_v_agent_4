@@ -1,0 +1,18 @@
+{
+  "run_id": "d4645299-dd10-40d4-b81d-36d6cea86248",
+  "start_time": "2025-06-11 16:49:45.682991",
+  "end_time": "2025-06-11 16:50:58.794788",
+  "elapsed_s": 73.111797,
+  "total_tokens": 0,
+  "total_cost_usd": 0.0,
+  "scenes_processed": 1,
+  "shots_generated": 0,
+  "variations_created": 0,
+  "frames_accepted": 0,
+  "frames_rejected": 0,
+  "retry_attempts": 0,
+  "edit_attempts": 0,
+  "accept_rate": 0.0,
+  "models_used": {},
+  "errors": []
+}

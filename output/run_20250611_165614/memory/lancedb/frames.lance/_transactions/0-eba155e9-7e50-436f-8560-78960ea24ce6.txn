@@ -1,0 +1,3 @@
+$eba155e9-7e50-436f-8560-78960ea24ce6²¤!frame_id ÿÿÿÿÿÿÿÿÿ*string08"scene_id ÿÿÿÿÿÿÿÿÿ*int3208!shot_id ÿÿÿÿÿÿÿÿÿ*int3208!prompt ÿÿÿÿÿÿÿÿÿ*string08*negative_prompt ÿÿÿÿÿÿÿÿÿ*string08!entities ÿÿÿÿÿÿÿÿÿ*list08item *string088	embedding ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:153608%
+image_path ÿÿÿÿÿÿÿÿÿ*string08'quality_score	 ÿÿÿÿÿÿÿÿÿ*float08$	timestamp
+ ÿÿÿÿÿÿÿÿÿ*string08

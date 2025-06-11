@@ -1,0 +1,42 @@
+{
+  "frames": [
+    {
+      "frame_id": "4a80cc0b-179d-457f-b992-d95a867a6ce1",
+      "scene_id": 1,
+      "shot_id": 1,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space showcasing a serene, lush planet occupying the lower half of the frame. The top half is dominated by the dark silhouettes of the Silicate battleships hovering in a silent formation. The planet is gently lit on one side, casting a faint glow, while the battleships' underbellies reflect subtle white metallic glimmers, hinting at their advanced technology. The overall mood is one of a foreboding calm, emphasizing the enormous scale of the Silicate fleet against the tranquility of the planet below.",
+      "negative_prompt": "Avoid overly bright or saturated colors, overly clean or digital-looking textures, and thin or inconsistent linework.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "extreme wide",
+        "movement": null
+      },
+      "image_path": null,
+      "quality_score": 0.7,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "e8c898dc-8ea6-4be8-a01e-e4ba363c7099",
+      "scene_id": 1,
+      "shot_id": 2,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from the vantage point of space, capturing a serene, lush planet filling the lower half of the frame. The planet is gently lit by the system's sun, casting a faint glow on its surface, revealing patches of green and blue. Above, the dark silhouettes of the Silicate battleships form a silent, formidable formation. Their underbellies exhibit subtle white metallic glimmers, hinting at their advanced technology. The entire scene conveys a foreboding calm and emphasizes the enormous scale of the Silicate fleet hovering ominously against the backdrop of space.",
+      "negative_prompt": "Avoid overly bright or saturated colors, excessive detail that detracts from the main elements, and any modern or futuristic elements that do not fit the graphic novel/anime aesthetic.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "extremely wide",
+        "movement": null
+      },
+      "image_path": null,
+      "quality_score": 0.7,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    }
+  ]
+}

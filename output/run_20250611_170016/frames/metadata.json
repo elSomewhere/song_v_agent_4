@@ -1,0 +1,42 @@
+{
+  "frames": [
+    {
+      "frame_id": "1f888eb9-417b-4aa7-b1fc-4f2a89546832",
+      "scene_id": 1,
+      "shot_id": 1,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space captures a serene, lush planet filling the lower half of the frame, softly lit by the system's sun on one side, creating a gentle glow. Above, the dark silhouettes of the Silicate battleships dominate the top half of the frame. Their underbellies feature subtle white metallic glimmers, hinting at advanced technology. The overall mood is one of foreboding calm, emphasizing the enormous scale of the Silicate fleet. The scene is depicted using muted, desaturated tones\u2014primarily cold blues, greys, and dark neutrals. A slight grunge texture overlay gives the image a worn, analog look, while subtle lighting with soft glows from panels or screens contributes to a somber and moody atmosphere.",
+      "negative_prompt": "Avoid bright, saturated colors, overly clean digital lines, and high brightness levels that would detract from the somber and moody atmosphere.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "top-down",
+        "distance": "extremely wide",
+        "movement": null
+      },
+      "image_path": null,
+      "quality_score": 0.7,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    },
+    {
+      "frame_id": "a181e68a-366e-4dd9-a072-9507402f7785",
+      "scene_id": 1,
+      "shot_id": 2,
+      "variation_idx": 0,
+      "prompt": "An extremely wide shot from space shows a serene, lush planet filling the lower half of the frame. The planet is gently lit on one side by the system's sun, creating a faint glow that highlights its green and blue tones. Above, dominating the top half of the frame, are the dark silhouettes of the Silicate battleships, arranged in a silent, ominous formation. The underbellies of the battleships subtly glimmer with white metallic highlights, hinting at their advanced technology. The scene conveys a foreboding calm, emphasizing the sheer scale and power of the Silicate fleet against the tranquil backdrop of the planet.",
+      "negative_prompt": "Avoid bright colors and overly detailed textures that detract from the muted, graphic novel style. Do not use high contrast lighting that could disrupt the somber atmosphere.",
+      "entities": [],
+      "camera": {
+        "type": "static",
+        "angle": "high-angle",
+        "distance": "extremely-wide",
+        "movement": null
+      },
+      "image_path": null,
+      "quality_score": 0.7,
+      "retry_count": 0,
+      "edit_retry_count": 0
+    }
+  ]
+}

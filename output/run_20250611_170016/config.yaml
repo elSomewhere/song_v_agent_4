@@ -1,0 +1,25 @@
+budget_usd: 3.0
+ctx_images: 3
+ctx_window: 4
+max_edit_retries: 1
+max_retries: 2
+models:
+  embedding_text: text-embedding-3-large
+  fast_qa: gpt-4o
+  planner: gpt-4o
+  ref_tagger: gpt-4o
+  renderer_edit: gpt-image-1
+  renderer_new: gpt-image-1
+  reviewer: gpt-4o
+  script_parser: gpt-4o
+  variation_mgr: gpt-4o
+  vision_qa: gpt-4o
+n_variations: 1
+preprocess:
+  max_tokens_refs: 2000
+  max_tokens_script: 1000
+  refs: auto
+  script: auto
+  tag_confidence_threshold: 0.5
+token_cap: 4000
+variation_camera: full

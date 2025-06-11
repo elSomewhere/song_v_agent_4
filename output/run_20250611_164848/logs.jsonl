@@ -1,0 +1,2 @@
+{"ts": "2025-06-11T16:48:48.839373", "stage": "preprocess_script", "trace_id": "f0a6d47a-354a-4498-929a-4c0f48290259", "model": null, "tokens": null, "cost_usd": null, "latency_ms": null, "status": "success", "error": null, "extra": {"scenes_found": 60}}
+{"ts": "2025-06-11T16:48:58.581838", "stage": "preprocess_refs", "trace_id": "f0a6d47a-354a-4498-929a-4c0f48290259", "model": "gpt-4o", "tokens": null, "cost_usd": 0.01, "latency_ms": null, "status": "success", "error": null, "extra": {"image": "helena_fortress_standoff.png"}}
