@@ -42,6 +42,9 @@ def variation_mgr_node(state: WorkflowState) -> WorkflowState:
         )
         variations.extend(additional_variations)
     
+    if variations:
+        print(f"[VariationMgr] Scene {base_plan.scene_id} • Shot {base_plan.shot_id} – generated {len(variations)} variations")
+    
     state.variations = variations
     state.current_variation_idx = 0
     

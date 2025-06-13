@@ -27,6 +27,9 @@ def planner_node(state: WorkflowState) -> WorkflowState:
         log_entry(state, "planner", "no_more_scenes")
         return state
     
+    # Console progress output
+    print(f"[Planner] Scene {state.current_scene_idx + 1}/{len(state.scenes)} • Shot {state.current_shot_idx + 1} – planning...")
+    
     current_scene = state.scenes[state.current_scene_idx]
     
     # Get visual context from memory

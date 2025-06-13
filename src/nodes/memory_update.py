@@ -73,6 +73,8 @@ def _accept_frame(state: WorkflowState, memory: MemoryService) -> None:
     """Accept the current frame and update memory."""
     current_variation = state.variations[state.current_variation_idx]
     
+    print(f"[MemoryUpdate] ✅ Accepted frame for Scene {current_variation.scene_id} • Shot {current_variation.shot_id} (variation {state.current_variation_idx + 1})")
+    
     # Create frame data
     frame_data = {
         "frame_id": str(uuid4()),
@@ -113,6 +115,7 @@ def _accept_frame(state: WorkflowState, memory: MemoryService) -> None:
 def _advance_shot(state: WorkflowState) -> None:
     """Advance to the next shot or scene."""
     # Reset for next shot
+    print("[MemoryUpdate] ➡️ Moving to next shot ...")
     state.current_shot_idx += 1
     state.current_variation_idx = 0
     state.retry_count = 0
@@ -132,6 +135,8 @@ def _advance_shot(state: WorkflowState) -> None:
         state.current_scene_idx += 1
         state.current_shot_idx = 0
         
+        print(f"[MemoryUpdate] 🎬 Starting Scene {state.current_scene_idx + 1}")
+
         log_entry(state, "memory_update", "next_scene",
                  extra={"scene_idx": state.current_scene_idx})
     else:

@@ -28,6 +28,8 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
         log_entry(state, "reviewer", "no_plan")
         return state
     
+    print(f"[Reviewer] Scene {state.current_plan.scene_id} • Shot {state.current_plan.shot_id} – reviewing plan ...")
+    
     plan = state.current_plan
     
     # Get extended visual context

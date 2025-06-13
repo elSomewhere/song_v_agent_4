@@ -126,6 +126,9 @@ class WorkflowState(BaseModel):
     episodic_memory: List[Dict[str, Any]] = []
     visual_memory: List[Dict[str, Any]] = []
     
+    # Shared context summary for renderer prompts
+    static_summary: Optional[str] = None
+    
     # Workflow control
     workflow_complete: bool = False
 

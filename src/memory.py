@@ -9,7 +9,14 @@ import pyarrow as pa
 from datetime import datetime
 
 from src.models import RefMeta, WorkflowState
-from src.utils import get_openai_client, call_openai_with_retry, calculate_cost, log_entry
+from src.utils import (
+    get_openai_client,
+    call_openai_with_retry,
+    calculate_cost,
+    log_entry,
+    COST_PER_1K_TOKENS,
+    parse_json_response,
+)
 
 
 class MemoryService:
@@ -163,41 +170,38 @@ class MemoryService:
     
     def hybrid_retrieve(self, scene_embed: List[float], entities: List[str], shot_id: int,
                        k_txt: int = 5, k_img: int = 3) -> Tuple[List[Any], List[Any]]:
-        """Hybrid retrieval as specified in section 3.4."""
-        # Text search
+        """Hybrid retrieval that applies a cheap LLM metadata-only re-rank.
+
+        We first pull an *oversampled* set of ANN hits (3× the desired counts)
+        for text and image tables, concatenate them, then ask the LLM to
+        provide a relevance score purely from the metadata. Finally we split
+        the ranked list back into text vs. image hits so that downstream
+        components receive the expected two-tuple output.
+        """
+
+        # ------------------------------------------------------------------
+        # Initial ANN search (no heavy hand-tuned heuristics)
+        # ------------------------------------------------------------------
         txt_hits = self.episodic_text_table.search(scene_embed, "text_embedding").limit(k_txt * 3)
-        
-        # Image search  
         img_hits = self.visual_ctx_table.search(scene_embed, "clip_embedding").limit(k_img * 3)
-        
-        # Convert to pandas for scoring
-        txt_df = txt_hits.to_pandas() if txt_hits else None
-        img_df = img_hits.to_pandas() if img_hits else None
-        
-        def score_txt(r):
-            """Score text results."""
-            sem = 1 - r._distance
-            ent = self._jaccard(set(r.entities) if hasattr(r, 'entities') else set(), set(entities))
-            rec = 1 / (1 + abs(shot_id - r.shot_id) / 100) if hasattr(r, 'shot_id') else 0.5
-            return 0.6 * sem + 0.3 * ent + 0.1 * rec
-        
-        def score_img(r):
-            """Score image results."""
-            sim = 1 - r._distance
-            conf = 0.5 + 0.5 * r.confidence if hasattr(r, 'confidence') else 0.75
-            boost = 1.2 if hasattr(r, 'entity') and r.entity in entities else 1.0
-            return sim * conf * boost
-        
-        # Score and sort
-        txt_results = []
-        if txt_df is not None and not txt_df.empty:
-            txt_results = sorted(txt_df.itertuples(), key=score_txt, reverse=True)[:k_txt]
-        
-        img_results = []
-        if img_df is not None and not img_df.empty:
-            img_results = sorted(img_df.itertuples(), key=score_img, reverse=True)[:k_img]
-        
-        return txt_results, img_results
+
+        txt_results = list(txt_hits.to_pandas().itertuples()) if txt_hits else []
+        img_results = list(img_hits.to_pandas().itertuples()) if img_hits else []
+
+        # ------------------------------------------------------------------
+        # Metadata-only LLM re-rank
+        # ------------------------------------------------------------------
+        candidates = txt_results + img_results
+
+        if candidates:
+            shot_desc = f"Shot {shot_id} | entities: {', '.join(entities)}"
+            candidates = self._text_rerank(shot_desc, candidates, top_k=k_txt + k_img)
+
+        # Split back into their respective modalities while preserving order
+        txt_ranked = [c for c in candidates if hasattr(c, "chunk_text")][:k_txt]
+        img_ranked = [c for c in candidates if hasattr(c, "thumb_path")][:k_img]
+
+        return txt_ranked, img_ranked
     
     def _jaccard(self, set1: set, set2: set) -> float:
         """Calculate Jaccard similarity between two sets."""
@@ -377,4 +381,110 @@ class MemoryService:
             return sim * (0.5 + 0.5 * conf)
 
         ranked = sorted(df.itertuples(), key=_score, reverse=True)[:limit]
-        return [r._asdict() for r in ranked] 
+        return [r._asdict() for r in ranked]
+
+    # ------------------------------------------------------------------
+    # Cheap metadata-only LLM re-ranking for retrieval candidates
+    # ------------------------------------------------------------------
+
+    def _text_rerank(
+        self,
+        shot_desc: str,
+        candidates: List[Any],
+        top_k: Optional[int] = None,
+    ) -> List[Any]:
+        """Re-order ANN hits using a cheap GPT-4o tier.
+
+        The model only sees *text* (no images) – we therefore construct a
+        natural-language table of the candidate metadata and ask the model to
+        assign a 0-100 relevance score. Returns the candidates sorted by that
+        score, capped at *top_k*.
+        """
+
+        model = self.state.config["models"].get("reranker_text", "gpt-4o-mini")
+        client = self.client  # already initialised in __init__
+
+        if top_k is None:
+            top_k = (
+                self.state.config.get("retrieval", {}).get("text_rerank_k", 10)
+            )
+
+        # ------------------------------------------------------------------
+        # Build a simple text table for the LLM
+        # ------------------------------------------------------------------
+        rows = []
+        idx2cand = {}
+        for idx, cand in enumerate(candidates, 1):
+            # namedtuple rows from pandas keep attributes as properties – use
+            # getattr to stay generic.
+            entity = getattr(cand, "entity", "?")
+            tags = getattr(cand, "tags", []) or []
+            scene_id = getattr(cand, "scene_id", "?")
+            shot_id = getattr(cand, "shot_id", "?")
+            confidence = getattr(cand, "confidence", 0.0)
+
+            rows.append(
+                f"[{idx}] {entity} | tags: {', '.join(tags[:5])} | "
+                f"scene {scene_id} shot {shot_id} | conf {confidence:.2f}"
+            )
+
+            idx2cand[idx] = cand
+
+        table_txt = "\n".join(rows)
+
+        prompt_header = (
+            f"{shot_desc}\n\nFor each reference line below, give a relevance score 0-100.\n"
+            "Return **only** a JSON array of objects {\"id\": <int>, \"score\": <float>}.")
+
+        messages = [
+            {"role": "system", "content": "You are a helpful storyboard assistant."},
+            {"role": "user", "content": f"{prompt_header}\n{table_txt}"},
+        ]
+
+        scores: dict[int, float] = {}
+        try:
+            resp = call_openai_with_retry(
+                client,
+                model=model,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=120,
+            )
+
+            parsed = parse_json_response(resp.choices[0].message.content)
+
+            # The helper returns either a list directly or under a "data" key –
+            # handle both.
+            if isinstance(parsed, dict) and "data" in parsed:
+                arr = parsed["data"]
+            else:
+                arr = parsed
+
+            if isinstance(arr, list):
+                scores = {int(d.get("id", 0)): float(d.get("score", 0)) for d in arr}
+
+        except Exception as e:
+            # Log and fall back to original candidate order (ANN similarity)
+            log_entry(self.state, "text_rerank", "error", error=str(e))
+            return candidates[:top_k]
+
+        # Attach scores and sort (fallback to 0 for missing)
+        scored = [(scores.get(idx, 0.0), cand) for idx, cand in idx2cand.items()]
+        scored.sort(key=lambda x: -x[0])
+
+        # Budget accounting – assume ~300 input tokens, negligible output
+        approx_tokens = 300
+        cost = approx_tokens / 1000 * COST_PER_1K_TOKENS.get(model, {}).get("input", 0)
+
+        self.state.total_cost += cost
+
+        log_entry(
+            self.state,
+            "text_rerank",
+            "success",
+            model=model,
+            cost_usd=cost,
+            extra={"cands": len(candidates)},
+        )
+
+        return [cand for _, cand in scored[:top_k]] 

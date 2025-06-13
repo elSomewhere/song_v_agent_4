@@ -66,6 +66,9 @@ def policy_node(state: WorkflowState) -> WorkflowState:
         state.policy_action = "give_up"
         decision_reason = "low_quality_give_up"
     
+    # Console progress output
+    print(f"[Policy] Decision: {state.policy_action} (reason: {decision_reason})")
+    
     # Log decision
     log_entry(state, "policy", state.policy_action,
              extra={

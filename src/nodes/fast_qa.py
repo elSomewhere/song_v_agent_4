@@ -27,6 +27,8 @@ def fast_qa_node(state: WorkflowState) -> WorkflowState:
         log_entry(state, "fast_qa", "no_image")
         return state
     
+    print(f"[FastQA] Assessing current image – variation {state.current_variation_idx + 1}/{len(state.variations)}")
+    
     # Get current variation for context
     current_variation = state.variations[state.current_variation_idx]
     

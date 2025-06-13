@@ -126,6 +126,16 @@ class Loader:
         if config_overrides:
             config.update(config_overrides)
         
+        # ------------------------------------------------------------------
+        # Create static summary of script, entities, style (once per run)
+        # ------------------------------------------------------------------
+        static_summary = self._generate_static_summary(
+            script_text=inputs["script"],
+            entities_text=inputs["entities"],
+            style_text=inputs["style"],
+            config=config,
+        )
+        
         # Create initial state
         state = WorkflowState(
             script_path=script_path,
@@ -139,7 +149,8 @@ class Loader:
             budget_usd=config.get("budget_usd", 35.0),
             n_variations=config.get("n_variations", 3),
             max_retries=config.get("max_retries", 2),
-            max_edit_retries=config.get("max_edit_retries", 1)
+            max_edit_retries=config.get("max_edit_retries", 1),
+            static_summary=static_summary,
         )
         
         # Log initialization (temporarily disable to avoid circular dependency)
@@ -172,3 +183,65 @@ class Loader:
         # Initialize empty logs.jsonl
         with open(output_path / "logs.jsonl", 'w') as f:
             pass 
+
+    # ------------------------------------------------------------------
+    # Helper: generate a concise static summary for renderer prompts
+    # ------------------------------------------------------------------
+
+    def _generate_static_summary(
+        self,
+        script_text: str,
+        entities_text: str,
+        style_text: str,
+        config: Dict[str, Any],
+    ) -> str:
+        """Use a cheap model to create a single summary (~250 tokens)."""
+
+        from src.utils import (
+            get_openai_client,
+            call_openai_with_retry,
+            calculate_cost,
+        )
+
+        client = get_openai_client()
+        model = config["models"].get("reranker_text", "gpt-4o-mini")
+
+        prompt = (
+            "Summarize the following *story script*, *character & environment designs*, "
+            "and *art style guide* into a concise reference for an image generator. "
+            "Focus on key visual details, recurring characters, their appearances, and the overall "
+            "art style. Return ≤ 250 tokens in descriptive prose (no lists, no markdown).\n\n"
+            "### Script (truncated)\n" + script_text[:4000] +
+            "\n\n### Characters & Entities (truncated)\n" + entities_text[:4000] +
+            "\n\n### Style Guide\n" + style_text[:1000]
+        )
+
+        try:
+            resp = call_openai_with_retry(
+                client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a world-class storyboard assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=300,
+            )
+
+            summary_text = resp.choices[0].message.content.strip()
+
+            # Track cost roughly – assume resp.usage possibly missing on small model
+            tokens_in = 300  # approx
+            cost = calculate_cost(model, tokens_in, 0)
+            # Cannot log yet (state not created), so just print.
+            print(f"[Loader] Static summary generated (~{len(summary_text.split())} words, cost ≈ ${cost:.4f})")
+
+            return summary_text
+
+        except Exception as e:
+            print(f"[Loader] Failed to generate static summary: {e} – fallback to simple concat.")
+            # Fallback: simple concatenation trimmed to 2000 chars
+            concat_text = (
+                (script_text[:1200] + "\n\n" + entities_text[:600] + "\n\n" + style_text[:200])[:2000]
+            )
+            return concat_text 

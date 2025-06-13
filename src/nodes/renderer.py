@@ -31,6 +31,8 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
         log_entry(state, "renderer", "no_variation")
         return state
     
+    print(f"[Renderer] Scene {state.variations[state.current_variation_idx].scene_id} • Shot {state.variations[state.current_variation_idx].shot_id} • Variation {state.current_variation_idx + 1}/{len(state.variations)} – rendering image ...")
+    
     current_variation = state.variations[state.current_variation_idx]
     
     # Determine if this is a retry with edit
@@ -208,6 +210,10 @@ def _build_image_prompt(state: WorkflowState, variation: Any) -> str:
     """Build the complete image generation prompt."""
     prompt_parts = []
     
+    # Add shared static summary first (compact narrative & design context)
+    if state.static_summary:
+        prompt_parts.append(state.static_summary)
+
     # Main prompt
     prompt_parts.append(variation.image_prompt)
     

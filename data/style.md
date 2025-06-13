@@ -1,35 +1,39 @@
-“### **Drawing Style Description:**
+### **Drawing Style Description:**
 
-**Type:**  
-Digital illustration with a *hand-drawn, graphic novel/anime hybrid aesthetic*.
+**Type:**
+Digital illustration that fuses *Satoshi Kon’s vibrant, hand-painted anime aesthetic* with Tarkovsky-like poetic stillness.
 
-**Color Palette:**  
-- Muted, desaturated tones—mainly cold blues, greys, and dark neutrals.  
-- Slight grunge texture overlay gives it a worn, analog look.
-- Subtle lighting with soft glows from panels or screens; low overall brightness, contributing to a somber and moody atmosphere.
+**Color Palette:**
 
-**Linework:**  
-- Heavy, bold outlines with slight texture—almost inked by hand.
-- Crosshatching and shading textures for detail and depth (especially on armor and face).
-- Clearly defined facial features and shadows, emphasizing emotional intensity.
+* Cinematic yet lively hues—deep teals, warm ambers, and occasional electric pinks or reds.
+* Strong highlights and shadow blocks to heighten the reality-vs-dream tension.
+* Fine film-grain or subtle dust overlay, evoking 35 mm celluloid texture.
 
-**Character Design:**  
-- Realistic proportions but stylized faces (inspired by anime or serious manga).
-- Armor design is utilitarian and grounded, not exaggerated—evokes sci-fi realism.
-- Hair and expression are sharply rendered; the character's demeanor is stoic and focused.
+**Linework:**
 
-**Environment:**  
-- Narrow, dimly lit sci-fi interior (like a spaceship or military base).
-- Strong use of perspective and symmetry, especially in background architecture.
+* Clean, precise contours with slight taper; almost no heavy outlining.
+* Sparse cross-contour strokes used only to suggest motion or psychological stress.
+* Faces drawn with delicate, highly expressive features.
 
-**Overall Mood:**  
-- Cinematic and gritty, like a frame from a serious space opera or mature anime.  
-- Evokes themes of isolation, duty, or inner strength.
+**Character Design:**
+
+* Realistic proportions but unmistakably anime faces, true to Kon’s signature style.
+* Contemporary urban attire (work suits, streetwear, uniforms) with occasional surreal props—duplicate shadows, floating objects.
+* Hair rendered in bold, saturated tones and smoothly shaded.
+
+**Environment:**
+
+* Everyday Japanese cityscapes—neon backstreets, train stations, cramped apartments—painted in meticulous, painterly detail.
+* Tarkovskian composition: wide static frames, pronounced negative space, reflective surfaces (puddles, windows), and deep-focus layers that recede into soft haze.
+* Calm, lingering camera angle—often eye-level or slightly low, creating meditative stillness.
+
+**Overall Mood:**
+
+* Lyrical and introspective, alternating between grounded realism and unsettling dream logic.
+* Evokes themes of memory, identity, and blurred perception, with a quiet undercurrent of unease.
 
 ---
 
-Summary of the drawing style:
+**Summary of the drawing style:**
 
-> "Draw in the style of a gritty, anime-inspired digital illustration with muted colors, heavy inked outlines, and detailed textures—like a serious sci-fi manga with cinematic lighting and realistic armor design."
-
-For camera angle and composition, choose the style of Tarkovsky
+> “Create a still image with Tarkovsky-esque, contemplative framing and Satoshi Kon’s vivid yet clean anime artistry—rich colors, precise lines, and subtle surreal flourishes that blur the line between reality and dream.”

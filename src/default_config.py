@@ -37,5 +37,12 @@ DEFAULT_CONFIG = {
         # Additional internal keys used by code (not in original spec)
         "script_parser": "gpt-4o",  # alias for planner
         "ref_tagger": "gpt-4o-vision-preview",  # alias for vision model
+        # Reranker
+        "reranker_text": "gpt-4o-mini",
+    },
+
+    # Retrieval settings
+    "retrieval": {
+        "text_rerank_k": 10,
     },
 } 

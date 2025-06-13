@@ -20,6 +20,7 @@ def vision_qa_node(state: WorkflowState) -> WorkflowState:
         return state
     
     client = get_openai_client()
+    print("[VisionQA] Deep audit on sampled frame ...")
     memory = MemoryService(state)
     
     # Check budget
