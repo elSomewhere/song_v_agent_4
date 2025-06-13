@@ -156,30 +156,58 @@ class ReferencePreprocessor:
     def __init__(self, state: WorkflowState):
         self.state = state
         self.client = get_openai_client()
+
+        # Configurable flags for using directory / file names as hints
+        pp_cfg = self.state.config.get("preprocess", {})
+        self.use_dir_names: bool = pp_cfg.get("refs_use_dir_names", True)
+        self.use_file_names: bool = pp_cfg.get("refs_use_file_names", False)
+
         self.cache_dir = Path(".cache") / "thumbs"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
     
     def process_references(self, refs_dir: str) -> List[RefMeta]:
-        """Process all reference images in directory."""
+        """Process all reference images in directory (recursively)."""
         refs_path = Path(refs_dir)
         valid_extensions = {'.png', '.jpg', '.jpeg', '.webp'}
-        
-        ref_metas = []
-        
-        for image_file in refs_path.iterdir():
+
+        ref_metas: List[RefMeta] = []
+
+        # Walk recursively so that sub-folder images are also picked up
+        for image_file in refs_path.rglob('*'):
+            if not image_file.is_file():
+                continue
+
             if image_file.suffix.lower() in valid_extensions:
+                # Gather optional hints from directory / filename
+                dir_hint: Optional[str] = None
+                if self.use_dir_names and image_file.parent != refs_path:
+                    dir_hint = image_file.parent.name
+
+                file_hint: Optional[str] = image_file.stem if self.use_file_names else None
+
                 try:
-                    ref_meta = self._process_single_image(str(image_file))
+                    ref_meta = self._process_single_image(
+                        str(image_file), dir_hint=dir_hint, file_hint=file_hint
+                    )
                     ref_metas.append(ref_meta)
                 except Exception as e:
                     print(f"Error processing {image_file}: {e}")
-                    log_entry(self.state, "preprocess_refs", "error",
-                             extra={"file": str(image_file), "error": str(e)})
-        
+                    log_entry(
+                        self.state,
+                        "preprocess_refs",
+                        "error",
+                        extra={"file": str(image_file), "error": str(e)},
+                    )
+
         return ref_metas
     
-    def _process_single_image(self, image_path: str) -> RefMeta:
-        """Process a single reference image."""
+    def _process_single_image(
+        self,
+        image_path: str,
+        dir_hint: Optional[str] = None,
+        file_hint: Optional[str] = None,
+    ) -> RefMeta:
+        """Process a single reference image with optional textual hints."""
         # Create thumbnail
         image_hash = get_image_hash(image_path)
         thumb_path = self.cache_dir / f"{image_hash}_thumb.jpg"
@@ -190,8 +218,10 @@ class ReferencePreprocessor:
         # Load image for GPT vision
         image_b64 = load_image_as_base64(image_path)
         
-        # Tag with GPT-4o vision
-        tags_data = self._tag_image_with_gpt(image_b64, image_path)
+        # Tag with GPT-4o vision (pass hints)
+        tags_data = self._tag_image_with_gpt(
+            image_b64, image_path, dir_hint=dir_hint, file_hint=file_hint
+        )
         
         # Generate text embedding
         embedding = self._generate_embedding(tags_data['tags'])
@@ -210,24 +240,40 @@ class ReferencePreprocessor:
         
         return ref_meta
     
-    def _tag_image_with_gpt(self, image_b64: str, image_path: str) -> Dict[str, Any]:
-        """Use GPT-4o vision to tag an image."""
+    def _tag_image_with_gpt(
+        self,
+        image_b64: str,
+        image_path: str,
+        dir_hint: Optional[str] = None,
+        file_hint: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Use GPT-4o vision to tag an image, incorporating optional hints."""
         model = self.state.config["models"]["ref_tagger"]
         
         # Build context from entities
         entities_context = json.dumps(self.state.entities_dict) if self.state.entities_dict else ""
         
+        # Build optional hint text
+        hint_lines: List[str] = []
+        if dir_hint:
+            hint_lines.append(f"Folder hint: {dir_hint}")
+        if file_hint:
+            hint_lines.append(f"Filename hint: {file_hint}")
+
+        hint_block = "\n".join(hint_lines)
+
         prompt = f"""Analyze this reference image for a storyboard generation system.
-        
-        Known entities: {entities_context}
-        
-        Provide:
-        1. category: "character", "environment", "props", or "other"
-        2. entity: main entity name (match to known entities if possible)
-        3. tags: list of descriptive tags (visual features, colors, poses, etc.)
-        4. confidence: 0.0-1.0 confidence score
-        
-        Return as JSON."""
+
+Known entities: {entities_context}
+{hint_block}
+
+Provide:
+1. category: \"character\", \"environment\", \"props\", or \"other\"
+2. entity: main entity name (match to known entities if possible)
+3. tags: list of descriptive tags (visual features, colors, poses, etc.)
+4. confidence: 0.0-1.0 confidence score
+
+Return as JSON."""
         
         try:
             response = call_openai_with_retry(
@@ -265,10 +311,12 @@ class ReferencePreprocessor:
             # Parse response
             data = parse_json_response(content)
             
-            # Ensure required fields
+            # Determine a best-effort entity fallback
+            fallback_entity = dir_hint or (file_hint if file_hint else Path(image_path).stem)
+
             return {
                 "category": data.get("category", "other"),
-                "entity": data.get("entity", "unknown"),
+                "entity": fallback_entity,
                 "tags": data.get("tags", []),
                 "confidence": float(data.get("confidence", 0.5))
             }
@@ -279,9 +327,9 @@ class ReferencePreprocessor:
             # Return default values
             return {
                 "category": "other",
-                "entity": Path(image_path).stem,
+                "entity": fallback_entity,
                 "tags": ["untagged"],
-                "confidence": 0.0
+                "confidence": 0.0,
             }
     
     def _generate_embedding(self, tags: List[str]) -> List[float]:
