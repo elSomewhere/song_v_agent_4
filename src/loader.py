@@ -51,8 +51,9 @@ class Loader:
             
             # Check for valid image files
             valid_extensions = {'.png', '.jpg', '.jpeg', '.webp'}
-            image_files = [f for f in refs_path.iterdir() 
-                          if f.suffix.lower() in valid_extensions]
+            # Walk recursively so images in sub-directories count too
+            image_files = [f for f in refs_path.rglob('*')
+                          if f.is_file() and f.suffix.lower() in valid_extensions]
             
             if not image_files:
                 print(f"Warning: No valid image files found in {refs_dir}")
@@ -207,13 +208,12 @@ class Loader:
         model = config["models"].get("reranker_text", "gpt-4o-mini")
 
         prompt = (
-            "Summarize the following *story script*, *character & environment designs*, "
-            "and *art style guide* into a concise reference for an image generator. "
-            "Focus on key visual details, recurring characters, their appearances, and the overall "
-            "art style. Return ≤ 250 tokens in descriptive prose (no lists, no markdown).\n\n"
-            "### Script (truncated)\n" + script_text[:4000] +
-            "\n\n### Characters & Entities (truncated)\n" + entities_text[:4000] +
-            "\n\n### Style Guide\n" + style_text[:1000]
+            "Create a single reference block that an IMAGE GENERATION model can reuse for every shot. "
+            "It must capture: (1) the narrative premise, (2) a bulleted list of ALL key entities with a 1–2 sentence visual description each, (3) the dominant art style rules and palette. "
+            "Format: plain paragraphs separated by blank lines – *no markdown fences*. \n\n"
+            "### Script (excerpt, 8k chars)\n" + script_text[:8000] +
+            "\n\n### Character & Environment Designs (excerpt, 8k chars)\n" + entities_text[:8000] +
+            "\n\n### Style Guide (excerpt, 2k chars)\n" + style_text[:2000]
         )
 
         try:
@@ -225,13 +225,13 @@ class Loader:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
-                max_tokens=300,
+                max_tokens=500,
             )
 
             summary_text = resp.choices[0].message.content.strip()
 
             # Track cost roughly – assume resp.usage possibly missing on small model
-            tokens_in = 300  # approx
+            tokens_in = 500  # approx
             cost = calculate_cost(model, tokens_in, 0)
             # Cannot log yet (state not created), so just print.
             print(f"[Loader] Static summary generated (~{len(summary_text.split())} words, cost ≈ ${cost:.4f})")

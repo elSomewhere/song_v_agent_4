@@ -16,8 +16,9 @@ DEFAULT_CONFIG = {
     "preprocess": {
         "script": "auto",
         "refs": "auto",
-        "max_tokens_script": 1000,
-        "max_tokens_refs": 2000,
+        "entities": "auto",
+        "max_tokens_script": 4000,
+        "max_tokens_refs": 4000,
         "tag_confidence_threshold": 0.50,
         "refs_use_dir_names": True,
         "refs_use_file_names": False,

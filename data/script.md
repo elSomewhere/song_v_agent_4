@@ -139,8 +139,8 @@
     - **Mood**: Fearful chaos, intense urgency.
 
 20. **Shot 20**  
-    - **Action/Story Detail**: Close on a mother clutching a child, looking frantically for shelter as the ground shakes from distant explosions.  
-    - **Framing/Camera**: Tight medium shot, focusing on the mother’s desperate, tearful expression; child in her arms.  
+    - **Action/Story Detail**: Close on a Mother clutching a child, looking frantically for shelter as the ground shakes from distant explosions.  
+    - **Framing/Camera**: Tight medium shot, focusing on the Mothers desperate, tearful expression; child in her arms.  
     - **Environment/Lighting**: Smoke and cinders swirl, backlit by flickering flames.  
     - **Mood**: Heart-wrenching panic, civilian suffering.
 
@@ -174,16 +174,16 @@
 
 ---
 
-## **ACT 5: AWAKENING OF MOTHER**
+## **ACT 5: AWAKENING OF URMUTTER**
 
 25. **Shot 25**  
-    - **Action/Story Detail**: From Helena’s vantage at the outskirts of the city, we see “Mother,” an immense fortress, emerging from dust in the central square.  
-    - **Framing/Camera**: Wide shot with Helena in the lower corner (foreground), the colossal Mother structure rearing up in the background.  
-    - **Environment/Lighting**: Dust-filled air around Mother’s dark earthy form. Early sunlight outlines its monstrous silhouette.  
+    - **Action/Story Detail**: From Helena’s vantage at the outskirts of the city, we see “Urmutter,” an immense fortress, emerging from dust in the central square.  
+    - **Framing/Camera**: Wide shot with Helena in the lower corner (foreground), the colossal Urmutter structure rearing up in the background.  
+    - **Environment/Lighting**: Dust-filled air around Urmutter’s dark earthy form. Early sunlight outlines its monstrous silhouette.  
     - **Mood**: Awe, an ancient power revealed.
 
 26. **Shot 26**  
-    - **Action/Story Detail**: Closer look at Mother’s bizarre organic-mechanical exterior. Its pulsating, root-like surfaces enmeshed with technological plating.  
+    - **Action/Story Detail**: Closer look at Urmutter’s bizarre organic-mechanical exterior. Its pulsating, root-like surfaces enmeshed with technological plating.  
     - **Framing/Camera**: Medium-wide vantage from slightly below, capturing the texture of twisted tissue and metal struts.  
     - **Environment/Lighting**: Red-orange energy pulses glow from within. Smoke drifts around it, partially obscuring grotesque details.  
     - **Mood**: Horror and fascination at an alien merging of organic and machine.
@@ -191,37 +191,37 @@
 ---
 
 27. **Shot 27**  
-    - **Action/Story Detail**: Mother’s cannons begin to float into place around its structure, each barrel glowing with red-orange energy.  
+    - **Action/Story Detail**: Urmutter’s cannons begin to float into place around its structure, each barrel glowing with red-orange energy.  
     - **Framing/Camera**: Medium shot on a single cannon segment, mechanical tendrils adjusting its position.  
     - **Environment/Lighting**: Arc flashes of neon energy create bright highlights on the dark fortress surfaces. Smoke backlit by the glow.  
     - **Mood**: Tense escalation, sign of a coming counterattack.
 
 28. **Shot 28**  
-    - **Action/Story Detail**: Low-angle wide shot capturing multiple cannons and spires of Mother, all igniting with powerful neon energy.  
-    - **Framing/Camera**: Dramatic perspective from the ground, making Mother tower ominously in the frame.  
+    - **Action/Story Detail**: Low-angle wide shot capturing multiple cannons and spires of Urmutter, all igniting with powerful neon energy.  
+    - **Framing/Camera**: Dramatic perspective from the ground, making Urmutter tower ominously in the frame.  
     - **Environment/Lighting**: Shifting from dim dawn gloom to intense red-orange cast from the fortress’s power build-up.  
     - **Mood**: Overwhelming, unstoppable ancient power awakening.
 
 ---
 
 29. **Shot 29**  
-    - **Action/Story Detail**: Helena stands on the main road outside the central city square, watching Mother in the distance. Her posture is tense but resolute.  
-    - **Framing/Camera**: Medium shot from behind Helena, focusing on her silhouette facing Mother. The fortress looms in the background.  
+    - **Action/Story Detail**: Helena stands on the main road outside the central city square, watching Urmutter in the distance. Her posture is tense but resolute.  
+    - **Framing/Camera**: Medium shot from behind Helena, focusing on her silhouette facing Urmutter. The fortress looms in the background.  
     - **Environment/Lighting**: Early morning sun behind smoky clouds, plus the fortress’s red glow.  
     - **Mood**: Silent confrontation, acceptance of the challenge.
 
 30. **Shot 30**  
-    - **Action/Story Detail**: Close-up on Helena’s face as she narrows her eyes, acknowledging Mother’s threat yet determined to proceed.  
+    - **Action/Story Detail**: Close-up on Helena’s face as she narrows her eyes, acknowledging Urmutter’s threat yet determined to proceed.  
     - **Framing/Camera**: Tight shot. We see the reflection of the fortress’s glow in her dark eyes.  
-    - **Environment/Lighting**: Intense, swirling dust. Red highlights from Mother’s energy.  
+    - **Environment/Lighting**: Intense, swirling dust. Red highlights from Urmutter’s energy.  
     - **Mood**: Steely resolve and latent dread.
 
 ---
 
-## **ACT 6: MOTHER’S COUNTERATTACK**
+## **ACT 6: URMUTTER’S COUNTERATTACK**
 
 31. **Shot 31**  
-    - **Action/Story Detail**: Mother’s cannons discharge in unison, massive beams obliterating Silicate troops and vehicles.  
+    - **Action/Story Detail**: Urmutter’s cannons discharge in unison, massive beams obliterating Silicate troops and vehicles.  
     - **Framing/Camera**: Wide shot of the battlefield, with multiple red-orange energy beams arcing across the cityscape. Silicate lines erupt in explosions.  
     - **Environment/Lighting**: Bright flashes of destructive energy. Smoke, fire, debris in the city.  
     - **Mood**: Chaos, cataclysmic counterstrike.
@@ -337,8 +337,8 @@
 ---
 
 47. **Shot 47**  
-    - **Action/Story Detail**: Helena locks her gaze on the towering Mother fortress in the distance, battered but unbroken.  
-    - **Framing/Camera**: Medium-wide shot behind Helena, rubble-strewn street leading towards Mother.  
+    - **Action/Story Detail**: Helena locks her gaze on the towering Urmutter fortress in the distance, battered but unbroken.  
+    - **Framing/Camera**: Medium-wide shot behind Helena, rubble-strewn street leading towards Urmutter.  
     - **Environment/Lighting**: The fortress pulses with red-orange energy in the background; swirling smoke.  
     - **Mood**: Defiant confrontation, unstoppable spirit.
 
@@ -353,7 +353,7 @@
 ## **ACT 9: SACRIFICE AND DEFIANCE**
 
 49. **Shot 49**  
-    - **Action/Story Detail**: Helena charges through the ravaged streets toward Mother, avoiding collapsing buildings and stray cannon fire.  
+    - **Action/Story Detail**: Helena charges through the ravaged streets toward Urmutter, avoiding collapsing buildings and stray cannon fire.  
     - **Framing/Camera**: Wide shot from an elevated position, Helena in mid-run in the foreground. Blasts strike behind her.  
     - **Environment/Lighting**: Dust-laden daylight, dramatic shadows from falling debris.  
     - **Mood**: Heroic desperation, unstoppable momentum.
@@ -381,8 +381,8 @@
 ---
 
 53. **Shot 53**  
-    - **Action/Story Detail**: Helena leaps across a gap in the rubble, propelled by adrenaline, closing in on Mother’s courtyard.  
-    - **Framing/Camera**: Dynamic wide shot capturing Helena mid-air, the courtyard and Mother’s towering form behind.  
+    - **Action/Story Detail**: Helena leaps across a gap in the rubble, propelled by adrenaline, closing in on Urmutter’s courtyard.  
+    - **Framing/Camera**: Dynamic wide shot capturing Helena mid-air, the courtyard and Urmutter’s towering form behind.  
     - **Environment/Lighting**: Streaks of debris frame her jump, bright blasts behind.  
     - **Mood**: Climactic heroism, every effort culminating in this final approach.
 
@@ -396,7 +396,7 @@
 
 55. **Shot 55**  
     - **Action/Story Detail**: Sudden silence. We see the aftermath: Helena’s body lies motionless in drifting smoke, indicating the final toll of her courage.  
-    - **Framing/Camera**: Wide shot of the courtyard. Her prone form is small against the immense bulk of Mother.  
+    - **Framing/Camera**: Wide shot of the courtyard. Her prone form is small against the immense bulk of Urmutter.  
     - **Environment/Lighting**: Muted daylight, swirling dust. Smoke gently rising from unseen blasts.  
     - **Mood**: Somber finality, heartbreak in the stillness.
 
@@ -426,7 +426,7 @@
 
 59. **Shot 59**  
     - **Action/Story Detail**: Joy steps through the rubble, finds Helena’s battered helmet partially buried in debris. She lifts it gently.  
-    - **Framing/Camera**: Medium shot with Joy kneeling in the foreground, helmet in hand, Mother’s silhouette far behind.  
+    - **Framing/Camera**: Medium shot with Joy kneeling in the foreground, helmet in hand, Urmutter’s silhouette far behind.  
     - **Environment/Lighting**: Soft twilight, the sun nearly set. The scene is tinted with warm gold and cool shadows.  
     - **Mood**: Succession, a passing of the torch in silence.
 

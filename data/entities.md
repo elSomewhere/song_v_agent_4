@@ -74,7 +74,7 @@
 
 ---
 
-### 5. **Mother (Fortress)**
+### 5. **Urmutter (Fortress)**
 
 - **Appearance & Form**:  
   - **Hybrid Entity**: A colossal, towering fortress that merges organic, root-like tissue with futuristic mechanical plating. Though vaguely fortress-like, it has no clear humanoid form.  
@@ -184,18 +184,18 @@ A disciplined military machine marked by its clean, futuristic designs and relen
 
 ---
 
-### 5. **City Center with Mother’s Fortress**
+### 5. **City Center with Urmutter’s Fortress**
 
 - **Structural Layout**:  
-  - The largest open space in the rural city, once used for communal gatherings. Now overshadowed by Mother’s colossal presence.  
-  - Surrounding buildings partially collapsed or heavily damaged, forming a half-ring of rubble around Mother.
+  - The largest open space in the rural city, once used for communal gatherings. Now overshadowed by Urmutter’s colossal presence.  
+  - Surrounding buildings partially collapsed or heavily damaged, forming a half-ring of rubble around Urmutter.
 
-- **Mother’s Impact**:  
+- **Urmutter’s Impact**:  
   - Root-like structures and mechanical tendrils of the fortress have broken through streets or entwined with nearby ruins.  
   - Pulsing red-orange lights reflect ominously in every shattered window and puddle of water.
 
 - **Mood**:  
-  - A singular focal point of awe and dread. Even the city’s destruction seems dwarfed by Mother’s immense scale and alien grandeur.
+  - A singular focal point of awe and dread. Even the city’s destruction seems dwarfed by Urmutter’s immense scale and alien grandeur.
 
 ---
 
@@ -230,14 +230,14 @@ A disciplined military machine marked by its clean, futuristic designs and relen
 2. **Color Palette**:  
    - **Natural Environment**: Warm greens, browns, soft blues of the sky, gentle golden light—signifying life and peace.  
    - **Silicate Technology**: Predominantly white metallic surfaces with subtle reflective qualities, accented by cold blues (for hover tanks) and the occasional red safety lights.  
-   - **Mother’s Fortress**: Dominant dark earth tones fused with intense, pulsing red-orange energy, symbolizing an ancient, alien power.  
+   - **Urmutter’s Fortress**: Dominant dark earth tones fused with intense, pulsing red-orange energy, symbolizing an ancient, alien power.  
    - **Emotional Cues**: Red (Joy’s dress, burnt metal, and energy beams) often signals alarm, destruction, or resilience.
 
 3. **Emotional Impact**:  
    - **Helena**: Torn between her soldierly duty and haunted by her past.  
    - **Joy & Mr. Tanaka**: Embody innocence and familial love, directly threatened by the invasion.  
-   - **Mother**: A testament to an older, mystical power that even advanced armies cannot easily subdue.  
+   - **Urmutter**: A testament to an older, mystical power that even advanced armies cannot easily subdue.  
    - **Silicate Forces**: Reflect the efficiency and cold impersonality of an invading machine-like legion.
 
-This **Detailed Character & Environment Design Document** should serve as a robust foundation for future concept art, storyboards, or production design, ensuring that every aspect—from Helena’s scorched armor to the twisted tendrils of Mother’s fortress—carries thematic and visual cohesion throughout the narrative.
+This **Detailed Character & Environment Design Document** should serve as a robust foundation for future concept art, storyboards, or production design, ensuring that every aspect—from Helena’s scorched armor to the twisted tendrils of Urmutter’s fortress—carries thematic and visual cohesion throughout the narrative.
 

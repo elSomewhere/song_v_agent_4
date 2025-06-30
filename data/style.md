@@ -36,4 +36,4 @@ Digital illustration that fuses *Satoshi Kon’s vibrant, hand-painted anime aes
 
 **Summary of the drawing style:**
 
-> “Create a still image with Tarkovsky-esque, contemplative framing and Satoshi Kon’s vivid yet clean anime artistry—rich colors, precise lines, and subtle surreal flourishes that blur the line between reality and dream.”
+> “Create a still image with Tarkovsky-esque, contemplative framing and gritty retro–sci-fi manga style, combined with Satoshi Kon’s vivid yet clean anime artistry—rich colors, precise lines, and subtle surreal flourishes that blur the line between reality and dream.”

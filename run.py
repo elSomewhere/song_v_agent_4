@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 
 from src.loader import Loader
-from src.preprocess import ScriptPreprocessor, ReferencePreprocessor
+from src.preprocess import ScriptPreprocessor, ReferencePreprocessor, EntitiesPreprocessor, EntitiesEnricher
 from src.memory import MemoryService
 from src.models import WorkflowState, Metrics
 from src.utils import log_entry, save_workflow_state, ensure_directory
@@ -39,6 +39,22 @@ def preprocess_script_node(state: WorkflowState) -> WorkflowState:
     preprocessor = ScriptPreprocessor(state)
     state.scenes = preprocessor.parse_script(script_content)
     
+    # Dump parsed scenes to disk for user inspection
+    try:
+        scenes_dump = [s.model_dump() for s in state.scenes]
+        dump_path = Path(state.output_dir) / "scenes_parsed.json"
+        with open(dump_path, "w", encoding="utf-8") as f:
+            json.dump(scenes_dump, f, indent=2, ensure_ascii=False)
+        print(f"[PreprocessScript] Parsed scenes written to {dump_path.relative_to(state.output_dir)}")
+    except Exception as e:
+        print(f"[PreprocessScript] Warning: could not write scenes dump: {e}")
+    
+    # ------------------------------------------------------------------
+    # Index canonical entity descriptions (once per run)
+    # ------------------------------------------------------------------
+    if state.entities_dict:
+        MemoryService(state).index_canonical_entities(state.entities_dict)
+    
     log_entry(state, "preprocess_script", "success",
              extra={"scenes_found": len(state.scenes)})
     
@@ -62,6 +78,36 @@ def preprocess_refs_node(state: WorkflowState) -> WorkflowState:
     log_entry(state, "preprocess_refs", "success",
              extra={"refs_processed": len(ref_metas)})
     
+    return state
+
+
+def enrich_entities_node(state: WorkflowState) -> WorkflowState:
+    """Merge textual entities with visual reference metadata."""
+
+    # Require entities_dict and ref_index to proceed
+    if not state.entities_dict or not state.ref_index:
+        log_entry(state, "enrich_entities", "skipped",
+                 extra={"entities": bool(state.entities_dict), "refs": bool(state.ref_index)})
+        return state
+
+    preprocessor = EntitiesEnricher(state)
+    merged = preprocessor.enrich()
+
+    if merged and isinstance(merged, dict):
+        state.entities_dict = merged
+
+        # Dump for inspection
+        try:
+            dump_path = Path(state.output_dir) / "entities_enriched.json"
+            with open(dump_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, indent=2, ensure_ascii=False)
+            print(f"[EnrichEntities] Enriched entities written to {dump_path.relative_to(state.output_dir)}")
+        except Exception as e:
+            print(f"[EnrichEntities] Warning: couldn't write enriched entities: {e}")
+
+        # Re-index in memory
+        MemoryService(state).index_canonical_entities(merged)
+
     return state
 
 
@@ -94,6 +140,44 @@ def should_controller_to_planner(state: WorkflowState) -> str:
         return "planner"
 
 
+def preprocess_entities_node(state: WorkflowState) -> WorkflowState:
+    """Parse entities.md into structured dict using GPT if needed."""
+    # Skip if we already have parsed entities (JSON was present)
+    if state.entities_dict:
+        log_entry(state, "preprocess_entities", "skipped")
+        return state
+
+    preprocess_setting = state.config.get("preprocess", {}).get("entities", "auto")
+    if preprocess_setting != "auto":
+        # In heuristic or skip mode, we do not invoke GPT. If JSON wasn't parsed, leave empty.
+        log_entry(state, "preprocess_entities", "skipped")
+        return state
+
+    # Load entities.md text
+    with open(state.entities_path, "r", encoding="utf-8") as f:
+        entities_md = f.read()
+
+    preprocessor = EntitiesPreprocessor(state)
+    entities_dict = preprocessor.parse_entities(entities_md)
+    state.entities_dict = entities_dict or {}
+
+    # Dump entities dict to disk for inspection
+    if state.entities_dict:
+        try:
+            dump_path = Path(state.output_dir) / "entities_parsed.json"
+            with open(dump_path, "w", encoding="utf-8") as f:
+                json.dump(state.entities_dict, f, indent=2, ensure_ascii=False)
+            print(f"[PreprocessEntities] Parsed entities written to {dump_path.relative_to(state.output_dir)}")
+        except Exception as e:
+            print(f"[PreprocessEntities] Warning: could not write entities dump: {e}")
+
+    # Index canonical entities into memory for retrieval
+    if state.entities_dict:
+        MemoryService(state).index_canonical_entities(state.entities_dict)
+
+    return state
+
+
 def build_workflow() -> StateGraph:
     """Build the LangGraph workflow exactly as specified in section 5."""
     
@@ -102,14 +186,18 @@ def build_workflow() -> StateGraph:
     
     # Bootstrap nodes
     graph.add_node("preprocess_script", preprocess_script_node)
+    graph.add_node("preprocess_entities", preprocess_entities_node)
     graph.add_node("preprocess_refs", preprocess_refs_node)
+    graph.add_node("enrich_entities", enrich_entities_node)
     
     # Set entry point
     graph.set_entry_point("preprocess_script")
     
     # Bootstrap edges
-    graph.add_edge("preprocess_script", "preprocess_refs")
-    graph.add_edge("preprocess_refs", "planner")
+    graph.add_edge("preprocess_script", "preprocess_entities")
+    graph.add_edge("preprocess_entities", "preprocess_refs")
+    graph.add_edge("preprocess_refs", "enrich_entities")
+    graph.add_edge("enrich_entities", "planner")
     
     # Main loop nodes - exactly as specified
     for name, node in [
@@ -212,6 +300,7 @@ def main():
     parser.add_argument("--budget-usd", type=float, default=35, help="Budget in USD")
     parser.add_argument("--ai-preprocess-script", action="store_true", help="Use AI to preprocess script")
     parser.add_argument("--ai-preprocess-refs", action="store_true", help="Use AI to preprocess references")
+    parser.add_argument("--ai-preprocess-entities", action="store_true", help="Use AI to preprocess entities")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     
     args = parser.parse_args()
@@ -239,7 +328,8 @@ def main():
         "max_retries": args.max_retries,
         "preprocess": {
             "script": "auto" if args.ai_preprocess_script else "heuristic",
-            "refs": "auto" if args.ai_preprocess_refs else "skip"
+            "refs": "auto" if args.ai_preprocess_refs else "skip",
+            "entities": "auto" if args.ai_preprocess_entities else "heuristic",
         }
     }
     

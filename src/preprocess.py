@@ -185,6 +185,13 @@ class ReferencePreprocessor:
 
                 file_hint: Optional[str] = image_file.stem if self.use_file_names else None
 
+                # Debug output to console
+                try:
+                    rel_path = image_file.relative_to(refs_path)
+                except ValueError:
+                    rel_path = image_file
+                print(f"[PreprocessRefs] Reading reference image: {rel_path}")
+
                 try:
                     ref_meta = self._process_single_image(
                         str(image_file), dir_hint=dir_hint, file_hint=file_hint
@@ -262,6 +269,9 @@ class ReferencePreprocessor:
 
         hint_block = "\n".join(hint_lines)
 
+        # Pre-compute fallback entity so it's always defined (also used in error path)
+        fallback_entity: str = dir_hint or (file_hint if file_hint else Path(image_path).stem)
+
         prompt = f"""Analyze this reference image for a storyboard generation system.
 
 Known entities: {entities_context}
@@ -311,9 +321,7 @@ Return as JSON."""
             # Parse response
             data = parse_json_response(content)
             
-            # Determine a best-effort entity fallback
-            fallback_entity = dir_hint or (file_hint if file_hint else Path(image_path).stem)
-
+            # Use previously computed fallback_entity
             return {
                 "category": data.get("category", "other"),
                 "entity": fallback_entity,
@@ -358,3 +366,152 @@ Return as JSON."""
         except Exception as e:
             # Return zero vector on error
             return [0.0] * 1536 
+
+
+# ------------------------------------------------------------
+# NEW: EntitiesPreprocessor
+# ------------------------------------------------------------
+
+class EntitiesPreprocessor:
+    """Extracts structured entity data from entities.md using GPT if no valid JSON block was found."""
+
+    def __init__(self, state: WorkflowState):
+        self.state = state
+        self.client = get_openai_client()
+
+    def parse_entities(self, entities_markdown: str) -> Dict[str, Any]:
+        """Return a mapping of entity_name -> {description: str, features: str | None}."""
+
+        # Token limit (approx chars)
+        max_tokens = self.state.config.get("preprocess", {}).get("max_tokens_refs", 2000)
+        char_budget = max_tokens * 4  # rough 4 chars per token
+        prompt = (
+            "You are a knowledgeable storyboard assistant. "
+            "Extract EVERY entity (characters, props, environments) that has a heading or bullet list in the following design document. "
+            "Return JSON with each entity name as a key. For each, include at minimum `description` (1-2 sentences). "
+            "Include other keys like `features` if present. Do NOT wrap the JSON in markdown fences; output raw JSON only.\n\n" +
+            entities_markdown[:char_budget]
+        )
+
+        model_map = self.state.config.get("models", {})
+        # Use dedicated key if defined, else fall back to script_parser or planner
+        model = (
+            model_map.get("entities_parser")
+            or model_map.get("script_parser")
+            or model_map.get("planner", "gpt-4o")
+        )
+
+        try:
+            response = call_openai_with_retry(
+                self.client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are an expert information extractor."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_tokens=1500,
+            )
+
+            content = response.choices[0].message.content
+            tokens = response.usage.total_tokens if hasattr(response, "usage") else 0
+            cost = (
+                calculate_cost(model, response.usage.prompt_tokens, response.usage.completion_tokens)
+                if hasattr(response, "usage")
+                else 0.0
+            )
+
+            self.state.total_tokens += tokens
+            self.state.total_cost += cost
+
+            data = parse_json_response(content)
+            if not isinstance(data, dict):
+                raise ValueError("Parsed entities is not a dict")
+
+            log_entry(
+                self.state,
+                "preprocess_entities",
+                "success",
+                model=model,
+                tokens=tokens,
+                cost_usd=cost,
+                extra={"entities": len(data)},
+            )
+
+            return data
+
+        except Exception as e:
+            # On failure just return empty dict and log error
+            log_entry(
+                self.state,
+                "preprocess_entities",
+                "error",
+                model=model,
+                error=str(e),
+            )
+            return {} 
+
+
+# ------------------------------------------------------------
+# NEW: EntitiesEnricher – reconcile textual entities with visual refs
+# ------------------------------------------------------------
+
+class EntitiesEnricher:
+    """Merge entity descriptions with visual reference metadata via GPT."""
+
+    def __init__(self, state: WorkflowState):
+        self.state = state
+        self.client = get_openai_client()
+
+    def enrich(self) -> Dict[str, Any]:
+        """Return updated entities_dict with visual info merged."""
+
+        if not self.state.entities_dict or not self.state.ref_index:
+            return self.state.entities_dict  # Nothing to do
+
+        # Build a compact JSON of visual refs grouped by entity
+        refs_by_entity: Dict[str, List[str]] = {}
+        for ref in self.state.ref_index:
+            ent = ref.entity or "unknown"
+            refs_by_entity.setdefault(ent, []).append(", ".join(ref.tags[:6]))
+
+        # Prepare prompt
+        prompt_blocks = []
+        prompt_blocks.append("### Textual Entity Descriptions (JSON)\n" + json.dumps(self.state.entities_dict, indent=2)[:6000])
+        prompt_blocks.append("\n### Visual Reference Tags per Entity (from images)\n" + json.dumps(refs_by_entity, indent=2)[:4000])
+
+        full_prompt = (
+            "Merge the textual entity descriptions with the visual reference tags. "
+            "For each entity, produce a CONSOLIDATED JSON object with keys: description (text), visual_traits (comma list), canonical_colors (comma list if identifiable). "
+            "If there are conflicts, choose the version best supported by image tags. Return raw JSON only.\n\n" +
+            "\n\n".join(prompt_blocks)
+        )
+
+        model = self.state.config["models"].get("entities_parser", self.state.config["models"].get("planner","gpt-4o"))
+
+        try:
+            resp = call_openai_with_retry(
+                self.client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a meticulous story bible editor."},
+                    {"role": "user", "content": full_prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1200,
+            )
+
+            merged = parse_json_response(resp.choices[0].message.content)
+            if isinstance(merged, dict):
+                log_entry(
+                    self.state,
+                    "enrich_entities",
+                    "success",
+                    model=model,
+                    tokens=getattr(resp.usage, "total_tokens", None),
+                )
+                return merged
+        except Exception as e:
+            log_entry(self.state, "enrich_entities", "error", model=model, error=str(e))
+
+        return self.state.entities_dict 

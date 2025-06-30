@@ -32,18 +32,39 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     
     plan = state.current_plan
     
-    # Get extended visual context
+    # ------------------------------------------------------------------
+    # 1) Local visual context (nearby frames + entity-based refs)
+    # ------------------------------------------------------------------
     nearby_frames, relevant_refs = memory.get_visual_context(
         plan.scene_id,
         plan.shot_id,
         window_size=state.config.get("ctx_window", 4)
     )
     
+    # ------------------------------------------------------------------
+    # 2) Broader hybrid retrieval for additional references
+    # ------------------------------------------------------------------
+    try:
+        prompt_embed = memory._generate_embedding(plan.image_prompt)
+        ent_names = [e.name for e in plan.entities]
+        txt_hits, img_hits = memory.hybrid_retrieve(prompt_embed, ent_names, plan.shot_id, k_txt=10, k_img=6)
+
+        # Convert hits to dicts and extend relevant_refs
+        ref_extra = [h._asdict() for h in img_hits] if img_hits else []
+        # Avoid duplicates (by frame_id)
+        seen_ids = {r.get("frame_id") for r in relevant_refs}
+        for r in ref_extra:
+            if r.get("frame_id") not in seen_ids:
+                relevant_refs.append(r)
+    except Exception as _:
+        # Fail silently – fallback to existing context
+        pass
+    
     # Get top reference images to show
     visual_refs = _get_visual_references(state, relevant_refs, limit=state.config.get("ctx_images", 3))
     
-    # Build prompt with visual context
-    prompt = _build_reviewer_prompt(state, plan, nearby_frames, relevant_refs, visual_refs)
+    # Build prompt with visual context & canonical entity info
+    prompt = _build_reviewer_prompt(state, plan, nearby_frames, relevant_refs, visual_refs, memory)
     
     # Build messages with images
     messages = [
@@ -155,8 +176,8 @@ def _get_visual_references(state: WorkflowState, refs: List[Dict],
 
 def _build_reviewer_prompt(state: WorkflowState, plan: ScenePlan,
                           nearby_frames: List[Dict], relevant_refs: List[Dict],
-                          visual_refs: List[Dict]) -> str:
-    """Build the prompt for the reviewer."""
+                          visual_refs: List[Dict], memory: MemoryService) -> str:
+    """Build the prompt for the reviewer including canonical entity descriptions."""
     
     # Format nearby frames context
     frames_context = ""
@@ -166,6 +187,14 @@ def _build_reviewer_prompt(state: WorkflowState, plan: ScenePlan,
             summary = f"- Scene {frame['scene_id']} Shot {frame['shot_id']}: {frame['prompt'][:150]}..."
             frame_summaries.append(summary)
         frames_context = "\n".join(frame_summaries)
+    
+    # Build canonical entity descriptions for entities in this shot
+    canon_lines = []
+    for ent in plan.entities:
+        desc = memory.lookup_canonical(ent.name)
+        if desc:
+            canon_lines.append(f"{ent.name}: {desc}")
+    canonical_block = "\n".join(canon_lines) if canon_lines else "None available"
     
     prompt = f"""Review this storyboard shot plan for visual consistency and quality.
 
@@ -180,6 +209,9 @@ Visual Context from Previous Frames:
 
 Reference Images Available: {len(visual_refs)} images showing relevant characters/environments
 
+Canonical Entity Descriptions (ground truth):
+{canonical_block}
+
 Your review should:
 1. Check visual consistency with previous frames
 2. Ensure style guide adherence
@@ -187,6 +219,7 @@ Your review should:
 4. Suggest improvements to the image prompt
 5. Provide a negative prompt to avoid common issues
 6. Estimate token usage for the generation
+7. Flag whether the shot violates canonical entity descriptions (boolean)
 
 Return JSON with:
 {{
@@ -197,6 +230,7 @@ Return JSON with:
     "style_adjustments": "any style-specific adjustments",
     "negative_prompt": "things to avoid in the image",
     "estimated_tokens": 1000,
+    "violates_canonical": true/false,
     "notes": "additional guidance for the renderer"
 }}"""
     

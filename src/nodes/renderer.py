@@ -72,9 +72,26 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
             "model": result["model"]
         })
         
+        # Build the full prompt
+        full_prompt = _build_image_prompt(state, current_variation)
+
+        # Save prompt to disk for user inspection (one .txt per frame id later)
+        prompt_dump_dir = Path(state.output_dir) / "prompts"
+        prompt_dump_dir.mkdir(parents=True, exist_ok=True)
+        prompt_temp_file = prompt_dump_dir / f"prompt_s{current_variation.scene_id}_sh{current_variation.shot_id}_v{state.current_variation_idx}.txt"
+        try:
+            with open(prompt_temp_file, "w", encoding="utf-8") as pf:
+                pf.write(full_prompt)
+        except Exception:
+            pass  # Non-fatal
+        
         log_entry(state, "renderer", "success",
                  model=result["model"], cost_usd=result["cost"],
-                 extra={"is_edit": is_edit, "image_path": image_filename})
+                 extra={
+                     "is_edit": is_edit,
+                     "image_path": image_filename,
+                     "prompt_file": str(prompt_temp_file),
+                 })
         
     except Exception as e:
         log_entry(state, "renderer", "error", error=str(e))
@@ -208,35 +225,41 @@ def _get_reference_images(state: WorkflowState, memory: MemoryService,
 
 def _build_image_prompt(state: WorkflowState, variation: Any) -> str:
     """Build the complete image generation prompt."""
-    prompt_parts = []
-    
-    # Add shared static summary first (compact narrative & design context)
-    if state.static_summary:
-        prompt_parts.append(state.static_summary)
+    # ------------------------------------------------------------------
+    # Standardised multi-section prompt for the image model
+    # ------------------------------------------------------------------
 
-    # Main prompt
-    prompt_parts.append(variation.image_prompt)
-    
-    # Add style guide
+    sections: List[str] = []
+
+    # 1) Global narrative / design context
+    if state.static_summary:
+        sections.append("<CONTEXT>\n" + state.static_summary.strip() + "\n</CONTEXT>")
+
+    # 2) Art-style rules (short excerpt + any shot-specific notes)
+    style_block_parts: List[str] = []
     if state.style_text:
-        prompt_parts.append(f"Style: {state.style_text[:200]}")
-    
-    # Add variation-specific style notes
+        style_block_parts.append(state.style_text[:400].strip())
     if variation.style_notes:
-        prompt_parts.append(variation.style_notes)
-    
-    # Add camera information
-    camera = variation.camera
-    camera_desc = f"Camera: {camera.distance} shot, {camera.angle} angle"
-    if camera.movement:
-        camera_desc += f", {camera.movement} movement"
-    prompt_parts.append(camera_desc)
-    
-    # Add negative prompt if available
+        style_block_parts.append(variation.style_notes.strip())
+    if style_block_parts:
+        sections.append("<STYLE_GUIDE>\n" + "\n".join(style_block_parts) + "\n</STYLE_GUIDE>")
+
+    # 3) The actual shot description (what to draw)
+    sections.append("<SHOT_PROMPT>\n" + variation.image_prompt.strip() + "\n</SHOT_PROMPT>")
+
+    # 4) Camera metadata
+    cam = variation.camera
+    cam_desc = f"type={cam.type}; angle={cam.angle}; distance={cam.distance}"
+    if cam.movement:
+        cam_desc += f"; movement={cam.movement}"
+    sections.append("<CAMERA>\n" + cam_desc + "\n</CAMERA>")
+
+    # 5) Negative prompt / avoid list
     if state.reviewed_plan and state.reviewed_plan.negative_prompt:
-        prompt_parts.append(f"Avoid: {state.reviewed_plan.negative_prompt}")
-    
-    return " | ".join(prompt_parts)
+        sections.append("<NEGATIVE>\n" + state.reviewed_plan.negative_prompt.strip() + "\n</NEGATIVE>")
+
+    # Final prompt string (double line breaks between blocks for clarity)
+    return "\n\n".join(sections)
 
 
 def _build_edit_instruction(state: WorkflowState, variation: Any) -> str:

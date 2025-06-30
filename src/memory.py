@@ -487,4 +487,46 @@ class MemoryService:
             extra={"cands": len(candidates)},
         )
 
-        return [cand for _, cand in scored[:top_k]] 
+        return [cand for _, cand in scored[:top_k]]
+
+    def index_canonical_entities(self, entities_dict: Dict[str, Any]) -> None:
+        """Index canonical entity descriptions into canonical_text table (idempotent)."""
+        if not entities_dict:
+            return
+
+        # Fetch existing ids to avoid duplicates
+        existing_df = self.canonical_text_table.to_pandas()
+        existing_ids = set(existing_df["chunk_id"]) if not existing_df.empty else set()
+
+        new_records = []
+        for name, desc in entities_dict.items():
+            # Description may be dict or string
+            if isinstance(desc, dict):
+                text_desc = json.dumps(desc, ensure_ascii=False)
+            else:
+                text_desc = str(desc)
+
+            if name in existing_ids:
+                continue  # Skip already indexed
+
+            embed = self._generate_embedding(text_desc)
+
+            new_records.append({
+                "chunk_id": name,
+                "chunk_text": text_desc,
+                "text_embedding": embed,
+            })
+
+        if new_records:
+            self.canonical_text_table.add(new_records)
+            log_entry(self.state, "memory_index_canonical", "success", extra={"count": len(new_records)})
+
+    def lookup_canonical(self, entity_name: str) -> Optional[str]:
+        """Return canonical description text for an entity if exists."""
+        df = self.canonical_text_table.to_pandas()
+        if df.empty:
+            return None
+        row = df[df["chunk_id"] == entity_name]
+        if row.empty:
+            return None
+        return str(row.iloc[0]["chunk_text"]) 
