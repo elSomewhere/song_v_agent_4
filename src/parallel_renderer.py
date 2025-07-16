@@ -119,21 +119,49 @@ def _render_single_variation(
     
     full_prompt = " | ".join(prompt_parts)
     
-    # Generate image
+    # Generate image using chat completions API (same as main renderer)
     model = config["models"]["renderer_new"]
     
     try:
-        response = client.images.generate(
-            model=model,  # Always use explicit model name from config (gpt-image-1)
-            prompt=full_prompt,
-            size="1024x1024",
-            quality="standard",
-            n=1,
-            response_format="b64_json"
-        )
-        
-        image_b64 = response.data[0].b64_json
-        cost = 0.04  # Standard cost for DALL-E 3
+        if model == "gpt-image-1":
+            # Use chat completions API for gpt-image-1
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{
+                    "role": "user",
+                    "content": [{"type": "text", "text": full_prompt}]
+                }],
+                max_tokens=1000
+            )
+            
+            # Extract image from standard response format
+            content = response.choices[0].message.content
+            
+            # For gpt-image-1, extract image data
+            if content and "data:image" in content:
+                import re
+                match = re.search(r'data:image/[^;]+;base64,([^"]+)', content)
+                if match:
+                    image_b64 = match.group(1)
+                else:
+                    raise Exception("No valid image data found in response")
+            else:
+                # Assume the entire content is base64 encoded image
+                image_b64 = content
+            
+            cost = 0.04  # Standard cost for gpt-image-1
+        else:
+            # Fallback to standard Images API for other models
+            response = client.images.generate(
+                model=model,
+                prompt=full_prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1,
+                response_format="b64_json"
+            )
+            image_b64 = response.data[0].b64_json
+            cost = 0.04  # Standard cost for image generation
         
         # Save image
         frame_id = str(uuid4())[:8]

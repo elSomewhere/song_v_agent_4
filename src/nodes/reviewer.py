@@ -94,6 +94,22 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     
     try:
         model = state.config["models"]["reviewer"]
+        
+        # Check token cap before making expensive API call
+        token_cap = state.config.get("token_cap", 4000)
+        text_content = messages[1]["content"][0]["text"]  # Extract text portion of message
+        estimated_tokens = len(text_content.split()) * 1.3  # Rough estimate with safety margin
+        if estimated_tokens > token_cap:
+            log_entry(state, "reviewer", "token_cap_exceeded", 
+                     extra={"estimated_tokens": estimated_tokens, "token_cap": token_cap})
+            # Truncate prompt to fit within token cap
+            words = text_content.split()
+            max_words = int(token_cap / 1.3)
+            if len(words) > max_words:
+                messages[1]["content"][0]["text"] = " ".join(words[:max_words]) + "\n\n[Truncated due to token cap]"
+                log_entry(state, "reviewer", "prompt_truncated", 
+                         extra={"original_words": len(words), "truncated_words": max_words})
+        
         response = call_openai_with_retry(
             client,
             model=model,
@@ -134,6 +150,27 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
         
         if "style_adjustments" in review_data:
             plan.style_notes = review_data.get("style_adjustments", plan.style_notes)
+        
+        # Handle camera modifications from reviewer
+        if "camera" in review_data:
+            from src.models import Camera
+            try:
+                # Merge reviewer's camera changes into the plan
+                camera_data = review_data["camera"]
+                if isinstance(camera_data, dict):
+                    # Update existing camera with reviewer's changes
+                    updated_camera = Camera(
+                        type=camera_data.get("type", plan.camera.type),
+                        angle=camera_data.get("angle", plan.camera.angle),
+                        distance=camera_data.get("distance", plan.camera.distance),
+                        movement=camera_data.get("movement", plan.camera.movement)
+                    )
+                    plan.camera = updated_camera
+                    log_entry(state, "reviewer", "camera_modified",
+                             extra={"camera_changes": camera_data})
+            except Exception as e:
+                log_entry(state, "reviewer", "camera_modification_error", 
+                         error=str(e), extra={"camera_data": camera_data})
         
         state.reviewed_plan = reviewed_plan
         
@@ -244,9 +281,10 @@ Your review should:
 2. Ensure style guide adherence
 3. Verify character/entity consistency
 4. Suggest improvements to the image prompt
-5. Provide a negative prompt to avoid common issues
-6. Estimate token usage for the generation
-7. Flag whether the shot violates canonical entity descriptions (boolean)
+5. Adjust camera settings if needed for better composition
+6. Provide a negative prompt to avoid common issues
+7. Estimate token usage for the generation
+8. Flag whether the shot violates canonical entity descriptions (boolean)
 
 Return JSON with:
 {{
@@ -254,6 +292,7 @@ Return JSON with:
     "consistency_score": 0.0-1.0,
     "issues": ["list of any issues found"],
     "modified_prompt": "improved version of the image prompt if needed",
+    "camera": {{"type": "static/tracking/etc", "angle": "eye-level/low/etc", "distance": "close-up/medium/etc", "movement": "pan-left/etc or null"}},
     "style_adjustments": "any style-specific adjustments",
     "negative_prompt": "things to avoid in the image",
     "estimated_tokens": 1000,

@@ -95,6 +95,21 @@ Return as JSON matching this structure:
     
     try:
         model = state.config["models"]["planner"]
+        
+        # Check token cap before making expensive API call
+        token_cap = state.config.get("token_cap", 4000)
+        estimated_tokens = len(prompt.split()) * 1.3  # Rough estimate with safety margin
+        if estimated_tokens > token_cap:
+            log_entry(state, "planner", "token_cap_exceeded", 
+                     extra={"estimated_tokens": estimated_tokens, "token_cap": token_cap})
+            # Truncate prompt to fit within token cap
+            words = prompt.split()
+            max_words = int(token_cap / 1.3)
+            if len(words) > max_words:
+                prompt = " ".join(words[:max_words]) + "\n\n[Truncated due to token cap]"
+                log_entry(state, "planner", "prompt_truncated", 
+                         extra={"original_words": len(words), "truncated_words": max_words})
+        
         response = call_openai_with_retry(
             client,
             model=model,

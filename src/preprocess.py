@@ -50,6 +50,7 @@ class ScriptPreprocessor:
             r'^Scene\s+(\d+)[:\s-]*(.*)$',          # Scene 1: Description
             r'^\[Scene\s+(\d+)\][:\s-]*(.*)$',      # [Scene 1]: Description
             r'^(\d+)\.\s*Scene[:\s-]*(.*)$',        # 1. Scene: Description
+            r'^(\d+)\.\s*\*\*Shot\s+\d+\*\*\s*$',    # 1. **Shot 1** (use first number as scene_id)
             r'^(\d+)\.\s*([A-Z][^.]*(?:\.|$))',     # 1. DESCRIPTION (only if uppercase start)
         ]
         

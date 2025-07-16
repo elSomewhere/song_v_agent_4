@@ -15,8 +15,14 @@ def memory_update_node(state: WorkflowState) -> WorkflowState:
     memory = state.get_memory_service()  # Use singleton memory service
     
     if state.policy_action == "accept":
-        # Accept the current frame
-        _accept_frame(state, memory)
+        # Check if we have variations to accept
+        if not state.variations or state.current_variation_idx >= len(state.variations):
+            log_entry(state, "memory_update", "no_variation_to_accept")
+            # Move to next iteration instead of crashing
+            state.policy_action = "give_up"
+        else:
+            # Accept the current frame
+            _accept_frame(state, memory)
         
         # Move to next variation or shot
         if state.current_variation_idx < len(state.variations) - 1:
