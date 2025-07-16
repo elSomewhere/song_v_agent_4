@@ -3,10 +3,16 @@ DEFAULT_CONFIG = {
     "ctx_images": 3,
     "ctx_window": 4,
     "token_cap": 4000,
+    
+    # Embedding configuration
+    "embedding_dimension": 1536,  # Configurable embedding dimension
 
     # Variations
     "n_variations": 3,
     "variation_camera": "full",  # full | angle_only | composition_only
+
+    # Scene structure
+    "shots_per_scene": 1,  # Number of shots to generate per scene
 
     # Retries
     "max_retries": 2,
@@ -20,7 +26,7 @@ DEFAULT_CONFIG = {
         "max_tokens_script": 4000,
         "max_tokens_refs": 4000,
         "tag_confidence_threshold": 0.50,
-        "refs_use_dir_names": True,
+        "refs_use_dir_names": False,  # Changed to False per review recommendation
         "refs_use_file_names": False,
     },
 

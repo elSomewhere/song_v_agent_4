@@ -1,0 +1,58 @@
+################################
+# Enhanced context windows for long storyboards  
+ctx_images: 6
+ctx_window: 8
+token_cap: 4000
+
+# Enhanced context parameters
+context_mode: enhanced
+global_context_enabled: true
+global_ctx_window: 15
+global_ctx_weight: 0.3
+character_consistency_window: 30
+environment_consistency_window: 20
+
+consistency_tracking:
+  characters: true
+  environments: true
+  style_elements: true
+  narrative_flow: true
+
+################################
+# variations
+n_variations: 3
+variation_camera: full
+
+# scene structure
+shots_per_scene: 1  # Number of shots to generate per scene
+
+################################
+# retries
+max_retries: 2
+max_edit_retries: 1
+
+################################
+# AI pre-processing
+preprocess:
+  script: auto
+  refs: auto
+  max_tokens_script: 1000
+  max_tokens_refs: 2000
+  tag_confidence_threshold: 0.50
+
+################################
+# budget
+budget_usd: 40
+
+################################
+# model map (explicit — do NOT swap)
+models:
+  embedding_text: text-embedding-3-large
+  planner: gpt-4o
+  reviewer: gpt-4o
+  variation_mgr: gpt-4o
+  renderer_new: gpt-image-1
+  renderer_edit: gpt-image-1
+  fast_qa: gpt-4o
+  vision_qa: gpt-4o
+  ref_tagger: gpt-4o

@@ -1,0 +1,61 @@
+# Cost configuration for VC-RAG-SBG system
+# Updated as of 2024 - replace hard-coded constants
+
+# Token costs (per 1K tokens)
+token_costs:
+  gpt-4o:
+    input: 0.0025
+    output: 0.01
+  gpt-4o-mini:
+    input: 0.00015
+    output: 0.0006
+  gpt-4o-vision-preview:
+    input: 0.0025
+    output: 0.01
+  text-embedding-3-large:
+    input: 0.00013
+    output: 0.0
+  text-embedding-3-small:
+    input: 0.00002
+    output: 0.0
+  gpt-image-1:
+    input: 0.0025
+    output: 0.01
+
+# Image generation costs
+image_costs:
+  gpt-image-1:
+    "1024x1024":
+      low: 0.02
+      medium: 0.08
+      high: 0.32
+    "1024x1536":
+      low: 0.03
+      medium: 0.12
+      high: 0.48
+    "1536x1024":
+      low: 0.03
+      medium: 0.12
+      high: 0.48
+  dall-e-2:
+    "1024x1024":
+      standard: 0.02
+      hd: 0.02
+  dall-e-3:
+    "1024x1024":
+      standard: 0.04
+      hd: 0.08
+    "1024x1792":
+      standard: 0.08
+      hd: 0.12
+    "1792x1024":
+      standard: 0.08
+      hd: 0.12
+
+# Vision processing costs (approximate)
+vision_costs:
+  gpt-4o-vision-preview:
+    low_detail: 0.001
+    high_detail: 0.02
+  fast_qa: 0.001
+  vision_qa: 0.02 

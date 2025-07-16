@@ -5,6 +5,7 @@ import json
 import jsonlines
 import base64
 import time
+import yaml
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -18,30 +19,43 @@ from openai import OpenAI
 from src.models import LogEntry, WorkflowState
 
 
-# Token cost mapping (as of 2024)
-COST_PER_1K_TOKENS = {
-    "gpt-4o": {"input": 0.0025, "output": 0.01},
-    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-    "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
-    "gpt-image-1": {"input": 0.0025, "output": 0.01},  # Approximate based on tokens
-}
-
-# Image generation cost approximations
-IMAGE_GEN_COST = {
-    "gpt-image-1": {
-        "1024x1024": {"low": 0.02, "medium": 0.08, "high": 0.32},
-        "1024x1536": {"low": 0.03, "medium": 0.12, "high": 0.48},
-        "1536x1024": {"low": 0.03, "medium": 0.12, "high": 0.48}
-    },
-    "dall-e-2": {
-        "1024x1024": {"standard": 0.02, "hd": 0.02}
-    },
-    "dall-e-3": {
-        "1024x1024": {"standard": 0.04, "hd": 0.08},
-        "1024x1792": {"standard": 0.08, "hd": 0.12},
-        "1792x1024": {"standard": 0.08, "hd": 0.12}
+# Load pricing configuration from external file
+def _load_pricing_config() -> Dict[str, Any]:
+    """Load pricing configuration from external YAML file."""
+    pricing_path = Path("pricing.yaml")
+    if pricing_path.exists():
+        try:
+            with open(pricing_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load pricing.yaml: {e}")
+    
+    # Fallback to built-in defaults
+    return {
+        "token_costs": {
+            "gpt-4o": {"input": 0.0025, "output": 0.01},
+            "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+            "text-embedding-3-large": {"input": 0.00013, "output": 0.0},
+            "gpt-image-1": {"input": 0.0025, "output": 0.01},
+        },
+        "image_costs": {
+            "gpt-image-1": {
+                "1024x1024": {"low": 0.02, "medium": 0.08, "high": 0.32},
+                "1024x1536": {"low": 0.03, "medium": 0.12, "high": 0.48},
+                "1536x1024": {"low": 0.03, "medium": 0.12, "high": 0.48}
+            },
+            "dall-e-3": {
+                "1024x1024": {"standard": 0.04, "hd": 0.08},
+                "1024x1792": {"standard": 0.08, "hd": 0.12},
+                "1792x1024": {"standard": 0.08, "hd": 0.12}
+            }
+        }
     }
-}
+
+# Load pricing configuration at startup
+_PRICING_CONFIG = _load_pricing_config()
+COST_PER_1K_TOKENS = _PRICING_CONFIG.get("token_costs", {})
+IMAGE_GEN_COST = _PRICING_CONFIG.get("image_costs", {})
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -142,8 +156,11 @@ def get_image_hash(image_path: str) -> str:
 def call_openai_with_retry(client: OpenAI, **kwargs) -> Any:
     """Call OpenAI API with retry logic."""
     try:
-        if "model" in kwargs and kwargs["model"].startswith("gpt-image"):
-            # Image generation calls
+        if "input" in kwargs and "tools" in kwargs:
+            # Responses API calls (for gpt-image-1 with references)
+            return client.responses.create(**kwargs)
+        elif "model" in kwargs and kwargs["model"].startswith("gpt-image"):
+            # Legacy image generation calls
             if "image" in kwargs:
                 # Edit endpoint
                 return client.images.edit(**kwargs)
@@ -185,26 +202,51 @@ def format_timestamp() -> str:
 
 
 def parse_json_response(response: str) -> Dict[str, Any]:
-    """Parse JSON from potentially messy LLM response."""
-    # Try to find JSON in the response
-    start_idx = response.find('{')
-    end_idx = response.rfind('}') + 1
+    """Parse JSON from potentially messy LLM response with improved heuristics."""
+    import re
+    
+    # First, try to find JSON that's not inside code blocks
+    # Remove markdown code blocks to avoid parsing code examples
+    clean_response = response
+    clean_response = re.sub(r'```[^`]*```', '', clean_response, flags=re.DOTALL)
+    clean_response = re.sub(r'`[^`]*`', '', clean_response)
+    
+    # Look for JSON objects
+    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+    matches = re.findall(json_pattern, clean_response, re.DOTALL)
+    
+    for match in matches:
+        try:
+            # Try to parse each potential JSON
+            parsed = json.loads(match)
+            if isinstance(parsed, dict) and len(parsed) > 0:
+                return parsed
+        except json.JSONDecodeError:
+            continue
+    
+    # Fallback: try the original approach but with better validation
+    start_idx = clean_response.find('{')
+    end_idx = clean_response.rfind('}') + 1
     
     if start_idx != -1 and end_idx > start_idx:
-        json_str = response[start_idx:end_idx]
+        json_str = clean_response[start_idx:end_idx]
         try:
-            return json.loads(json_str)
+            parsed = json.loads(json_str)
+            if isinstance(parsed, dict) and len(parsed) > 0:
+                return parsed
         except json.JSONDecodeError:
             pass
     
     # Try to find JSON array
-    start_idx = response.find('[')
-    end_idx = response.rfind(']') + 1
+    start_idx = clean_response.find('[')
+    end_idx = clean_response.rfind(']') + 1
     
     if start_idx != -1 and end_idx > start_idx:
-        json_str = response[start_idx:end_idx]
+        json_str = clean_response[start_idx:end_idx]
         try:
-            return {"data": json.loads(json_str)}
+            parsed = json.loads(json_str)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                return {"data": parsed}
         except json.JSONDecodeError:
             pass
     

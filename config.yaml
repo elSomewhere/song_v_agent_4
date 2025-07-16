@@ -1,13 +1,30 @@
 ################################
-# context windows
+# Enhanced context windows for long storyboards
 ctx_images:      6
 ctx_window:      4
+# NEW: Global context parameters
+global_context_enabled: true
+global_ctx_window:      20        # Look back across more scenes
+global_ctx_weight:      0.3       # Weight for global vs local context
+character_consistency_window: 50  # Track character appearances
+environment_consistency_window: 30 # Track environment continuity
 token_cap:       4000          # GPT call cap
+
+# NEW: Advanced context modes
+context_mode: "enhanced"  # basic | enhanced | global
+consistency_tracking:
+  characters: true
+  environments: true
+  style_elements: true
+  narrative_flow: true
 
 ################################
 # variations
 n_variations:          3
 variation_camera:      full     # full | angle_only | composition_only
+
+# scene structure
+shots_per_scene:       1        # Number of shots to generate per scene
 
 ################################
 # retries

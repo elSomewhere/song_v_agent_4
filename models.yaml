@@ -1,0 +1,71 @@
+# Model configuration for VC-RAG-SBG system
+# Explicit model mappings - do NOT swap these
+
+# Core models for different functions
+models:
+  # Text embedding
+  embedding_text: text-embedding-3-large
+  
+  # Planning and reasoning
+  planner: gpt-4o
+  reviewer: gpt-4o
+  variation_mgr: gpt-4o
+  
+  # Image generation (NEVER use dall-e-3)
+  renderer_new: gpt-image-1
+  renderer_edit: gpt-image-1
+  
+  # Quality assessment
+  fast_qa: gpt-4o-vision-preview
+  vision_qa: gpt-4o-vision-preview
+  
+  # Content processing
+  script_parser: gpt-4o
+  ref_tagger: gpt-4o-vision-preview
+  entities_parser: gpt-4o
+  
+  # Utility models
+  reranker_text: gpt-4o-mini
+
+# Model capabilities and limits
+model_specs:
+  gpt-4o:
+    max_tokens: 4096
+    context_window: 128000
+    supports_vision: false
+    supports_tools: true
+    
+  gpt-4o-mini:
+    max_tokens: 16384
+    context_window: 128000
+    supports_vision: false
+    supports_tools: true
+    
+  gpt-4o-vision-preview:
+    max_tokens: 4096
+    context_window: 128000
+    supports_vision: true
+    supports_tools: false
+    
+  text-embedding-3-large:
+    dimensions: [256, 1024, 1536, 3072]  # Supported dimensions
+    max_input: 8191  # Max tokens
+    
+  text-embedding-3-small:
+    dimensions: [512, 1536]
+    max_input: 8191
+    
+  gpt-image-1:
+    max_tokens: 4096
+    supports_vision: true
+    supports_image_generation: true
+    max_images: 4  # Max reference images
+
+# Fallback models for each function
+fallbacks:
+  embedding_text: text-embedding-3-small
+  planner: gpt-4o-mini
+  reviewer: gpt-4o-mini
+  renderer_new: dall-e-3  # Emergency fallback only
+  fast_qa: gpt-4o
+  vision_qa: gpt-4o 

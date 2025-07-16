@@ -1,0 +1,176 @@
+Below is a focused technical review of the **VC‑RAG‑SBG** storyboard generator, followed by a self‑contained **scene & shot schema** that the loader/pre‑processor can populate automatically from the un‑structured `data/` folder.
+
+---
+
+## 1. Hard‑coded assumptions & brittleness
+
+| Area                                | Finding                                                                                                                                                                                                 | Impact                                                                                           | Recommended fix                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Key‑entity fall‑backs**           | `memory.py::_get_visual_context` resorts to a literal list `["Helena", "Joy", "Tanaka", "Urmutter", "Silicate Army"]`.                                                                                  | Breaks on any new project; undermines “minimal assumptions”.                                     | Derive *all* fall‑backs from `state.entities_dict.keys()` (already parsed) and/or the canonical‐entity table. Remove the hard‑coded list.                  |
+| **Directory/file‑name hints**       | `ReferencePreprocessor` defaults to `refs_use_dir_names = True`; if the user drops images into a folder called “Helena”, the tagger will inject that literal string as the entity without verification. | Silent mis‑labelling when folders are renamed or contain mixed images.                           | Accept the hint only if the visual tagger returns *low* confidence **and** the hint has an embedding cosine ≥ 0.25 with some canonical entity description. |
+| **Shallow config merge**            | `Loader.initialize_state()` applies `config.update(config_overrides)` which overwrites *nested* dicts (e.g. `models`).                                                                                  | Supplying `config_overrides={"models":{…}}` wipes every default entry except the ones provided.  | Replace with a deep‑merge utility.                                                                                                                         |
+| **Fixed embedding dimension 1536**  | Stored in LanceDB schema and in every `_generate_embedding()` call.                                                                                                                                     | Locks you to `text‑embedding‑3‑large`; if OpenAI releases a 128‑dim “small” model the DB breaks. | Persist an explicit `dim` field in the LanceDB table meta and assert the model returns that size at runtime.                                               |
+| **Budget & cost constants in code** | `IMAGE_GEN_COST`, token prices, etc. are in‑code constants.                                                                                                                                             | Must be patched with every pricing change.                                                       | Load a YAML/JSON price sheet at startup or query the `/models` endpoint.                                                                                   |
+
+---
+
+## 2. String matching during *initial* folder parse
+
+The user requirement is *“no string matching when we initially parse the input folder”* (i.e. reference‑image ingestion).
+Current behaviour:
+
+* `ReferencePreprocessor.process_references()` walks the tree purely by file extension ➜ **✅ OK** (no string matching here).
+* **However**, later passes *do* embed folder/file names as tagging hints (`dir_hint`, `file_hint`). That is acceptable if it is treated as *weak evidence* (see recommendation above), but the wording of the requirement suggests even this is unwelcome.
+
+> **Action:** Add `refs_use_dir_names=false` and `refs_use_file_names=false` to `default_config.py` and enable them only via CLI flag.
+
+---
+
+## 3. Image‑consistency mechanisms
+
+Strengths
+
+* Canonical (**static**) table + episodic (**per‑frame**) table + visual\_ctx (**all images**) is a sound split.
+* `MemoryService.get_enhanced_visual_context()` combines local window + global heuristics.
+
+Gaps & risks
+
+| Issue                                  | Details                                                                                                                                                    |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Multiple `MemoryService` instances** | Every node instantiates its own LanceDB connection. In long runs this leads to file‑lock contention and diverging in‑RAM caches → inconsistent retrieval.  |
+| **Reference selection jitter**         | Hybrid retrieval reranks with a *cheap* LLM every call. Minor wording differences in the scene description change retrieval order, causing “prompt drift”. |
+| **Parallel rendering & LanceDB**       | `parallel_renderer` may fork; child processes inherit the file descriptor but not protection locks.                                                        |
+| **Static‑summary freshness**           | Generated once at load time; later edits to `style.md` or `entities.md` are not re‑summarised.                                                             |
+
+Mitigations
+
+1. Attach a single `MemoryService` to `WorkflowState` and pass the handle instead of re‑creating it.
+2. Cache the reranker result per `(scene_id,shot_id)`; key by the exact **reviewed plan hash** so all variations share the same references.
+3. When `parallel > 1`, open LanceDB in **read‑only** mode inside the worker, or swap to a process‑safe remote vector store.
+4. Regenerate `static_summary` if the loader detects that any source file changed (mtime check) before resuming a paused run.
+
+---
+
+## 4. Architectural / logic bugs
+
+| File / Line                                    | Bug / Smell                                                                                                                                                                            | Consequence                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `renderer._render_new()`                       | Sends a *gpt‑4.1* chat completion with `tools=[{"type":"image_generation"}]`, then expects `response.output`. Latest OpenAI icon speaks in `choices`.                                  | Crashes once old beta API is sunset. |
+| `policy._choose_best_image()`                  | After selecting best image it sets `current_image_b64`, but **not** `state.image_attempts = [best_attempt]`. The next QA node will still evaluate the last attempt not the chosen one. |                                      |
+| `Loader._save_initial_files()`                 | Opens files with default encoding (platform) except `.md` writes; use `encoding='utf‑8'`.                                                                                              |                                      |
+| `preprocess.ScriptPreprocessor._regex_parse()` | Accepts headings like `1.` anywhere in the line ⇒ Any numbered list can be misparsed as a scene header.                                                                                |                                      |
+| `parse_json_response()`                        | Returns the *first* `{ … }` block even if it is a code‑sample inside the model’s explanation, leading to silent half‑parsed configs.                                                   |                                      |
+| `parallel_renderer._render_single_variation()` | The in‑process OpenAI call uses `model=config["models"]["renderer_new"]`, but the hard‑coded cost comment still says “Standard cost for DALL‑E 3”.                                     |                                      |
+
+---
+
+## 5. Memory‑separation checklist
+
+| Requirement                                                              | Status                                                                                                                                                    | Note |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| Canonical knowledge vs. episodic events                                  | **✅** via separate LanceDB tables                                                                                                                         |      |
+| Visual vs. textual indexes                                               | **✅** (`visual_ctx` vs. text tables)                                                                                                                      |      |
+| Short‑term in‑RAM buffers cut off                                        | **⚠️** `state.episodic_memory` and `state.visual_memory` truncated, but pruning size is fixed (50 / 20). Consider making it proportional to `ctx_window`. |      |
+| “Global context” kept outside prompt windows unless explicitly requested | **✅** gated by `global_context_enabled`                                                                                                                   |      |
+
+Overall, separation is adequate; the main risk is *duplicate index entries* if the same canonical entity is re‑embedded with a different model (see embedding‑dimension note).
+
+---
+
+## 6. Proposed **Storyboard Scene‑Shot Schema**
+
+Below is a minimal but extensible structure that satisfies every bullet in the prompt.
+Use JSONLines (`*.jsonl`) where each line is a `SceneRecord`; nested shots avoid exploding file counts.
+
+```jsonc
+// storyboard.jsonl  (one line = one scene)
+{
+  "scene_id"       : 3,
+  "summary"        : "Helena and Joy enter the ruined atrium under heavy rain.",
+  "location"       : "Atrium • Capital Library Ruins",
+  "time_of_day"    : "Night",
+  "scene_tags"     : ["rain", "ruins", "blue‑green palette"],
+  "entities"       : [
+    { "id": "char_helena",    "role": "protagonist" },
+    { "id": "char_joy",       "role": "support"     },
+    { "id": "env_atrium",     "role": "setting"     }
+  ],
+
+  "shots": [
+    {
+      "shot_id"        : 1,
+      "purpose"        : "Establish setting and mood",
+      "camera"         : {
+        "type"      : "static",
+        "angle"     : "high",
+        "distance"  : "wide",
+        "movement"  : null
+      },
+      "composition_prompt" : "A wide shot showing Helena and Joy silhouetted against crumbling columns...",
+      "stylistic_prompt"   : "early‑90s cel shading, desaturated blues, visible pencil line work",
+      "negative_prompt"    : "no modern skyscrapers, no bright neon, avoid photorealism",
+      "reference_images"   : ["ref_12ab", "ref_98ff"],   // frame_ids from visual_ctx
+      "continuity_links"   : { "previous_frame": "frame_2c3e" },
+      "approved"           : false,      // pipeline toggles after QA/policy
+      "render_meta"        : {
+        "attempts": [],                  // filled at runtime
+        "accepted_frame_id": null
+      }
+    },
+
+    { "shot_id": 2, "...": "..." }
+  ]
+}
+```
+
+### How the schema addresses each bullet
+
+| Requirement                     | Field(s)                                                        |
+| ------------------------------- | --------------------------------------------------------------- |
+| **Scene summary**               | `summary`                                                       |
+| **Reference images**            | `reference_images` (links into LanceDB)                         |
+| **Context prompt**              | `composition_prompt` (plus inherited `summary`)                 |
+| **Camera prompt**               | `camera.*`                                                      |
+| **Stylistic prompt**            | `stylistic_prompt` (and scene‑level palette tags)               |
+| **Other professional guidance** | `purpose`, `negative_prompt`, `continuity_links`, `render_meta` |
+
+*Canonical entities* live in a **separate file** `entities.json` keyed by `id`:
+
+```json
+{
+  "char_helena": {
+    "name"        : "Helena",
+    "description" : "Early‑30s soldier ...",
+    "visual_traits": {
+      "hair" : "short black",
+      "eyes" : "grey",
+      "palette": ["#4a5c71", "#2d3b49"]
+    },
+    "ref_images"  : ["ref_01aa","ref_02bb"]
+  },
+  "env_atrium": { ... }
+}
+```
+
+### Loader‑side algorithm (pseudo)
+
+1. Read `script.md` ➜ parse scenes ➜ emit base `SceneRecord` lines (no shots yet).
+2. For each `SceneRecord`, call the planner → reviewer → variation\_mgr.
+
+   * Each new shot gets appended to `shots[]` inside its parent scene record.
+3. ReferencePreprocessor writes `visual_ctx/…` and returns `ref_id` ➜ injected into `reference_images`.
+4. Policy / memory\_update mutates the *same* line in `storyboard.jsonl` (or writes a revision file).
+
+Because the *schema* is **append‑only per scene** and shot data is nested, the user can safely hand‑edit anything without breaking referential integrity: every pointer is either a `scene_id`+`shot_id` pair or a globally unique ID (entity ID, ref image ID, generated frame ID).
+
+---
+
+## 7. Next steps
+
+1. **Replace every local `MemoryService()` construction** with a singleton stored in `state`, add a lightweight proxy if you need per‑node wrappers.
+2. Add a `SchemaMigrator` that loads legacy `frames/*.json` & friends and produces the new `storyboard.jsonl` + `entities.json`.
+3. Harden the code paths flagged in §4; run `pytest -k storyboard` with mocked OpenAI responses.
+4. Turn all cost and model defaults into an external `pricing.yaml` and `models.yaml`.
+5. Write a one‑time script that deletes the hard‑coded entity list and regenerates the LanceDB canonical table from `entities.json`.
+
+Implementing these changes eliminates brittle assumptions, keeps the memory architecture clean, and gives you an editable, single‑source‑of‑truth schema that the rendering agent can trust for consistent long‑form storyboards.

@@ -21,7 +21,7 @@ def vision_qa_node(state: WorkflowState) -> WorkflowState:
     
     client = get_openai_client()
     print("[VisionQA] Deep audit on sampled frame ...")
-    memory = MemoryService(state)
+    memory = state.get_memory_service()  # Use singleton memory service
     
     # Check budget
     if not check_budget(state):
@@ -47,6 +47,10 @@ def vision_qa_node(state: WorkflowState) -> WorkflowState:
     # Perform deep QA
     qa_result = _perform_vision_qa(client, state, current_variation, nearby_frames, relevant_refs)
     state.vision_qa_result = qa_result
+    
+    # Update quality score in latest attempt (vision QA overrides fast QA score)
+    if state.image_attempts:
+        state.image_attempts[-1]["quality_score"] = qa_result.quality_score
     
     log_entry(state, "vision_qa", qa_result.status,
              extra={
@@ -194,13 +198,17 @@ Return detailed JSON:
         
     except Exception as e:
         log_entry(state, "vision_qa", "error", error=str(e))
-        # Default to fast QA result on error
-        return state.fast_qa_result or QAResult(
-            status="pass",
-            quality_score=0.7,
-            specific_issues=[],
-            retry_guidance=None
-        )
+        # Default to fast QA result on error, but fail if fast QA also failed
+        if state.fast_qa_result and state.fast_qa_result.status != "fail":
+            return state.fast_qa_result
+        else:
+            # If fast QA failed or doesn't exist, fail safe
+            return QAResult(
+                status="fail",
+                quality_score=0.0,
+                specific_issues=["Vision QA system error: " + str(e)],
+                retry_guidance="Vision QA failed due to system error"
+            )
 
 
 def _build_context_summary(nearby_frames: List[Dict], relevant_refs: List[Dict]) -> str:

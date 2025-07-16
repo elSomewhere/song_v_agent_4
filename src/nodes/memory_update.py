@@ -12,7 +12,7 @@ from src.memory import MemoryService
 
 def memory_update_node(state: WorkflowState) -> WorkflowState:
     """Update memory based on policy decision."""
-    memory = MemoryService(state)
+    memory = state.get_memory_service()  # Use singleton memory service
     
     if state.policy_action == "accept":
         # Accept the current frame
@@ -26,6 +26,7 @@ def memory_update_node(state: WorkflowState) -> WorkflowState:
             state.edit_retry_count = 0
             state.fast_qa_result = None
             state.vision_qa_result = None
+            state.image_attempts = []  # Clear attempts for next variation
             log_entry(state, "memory_update", "next_variation",
                      extra={"variation": state.current_variation_idx})
         else:
@@ -48,7 +49,8 @@ def memory_update_node(state: WorkflowState) -> WorkflowState:
                  extra={"edit_retry_count": state.edit_retry_count})
         
     elif state.policy_action == "give_up":
-        # Give up on current variation
+        # Give up on current variation - save rejected images
+        _save_rejected_images(state)
         log_entry(state, "memory_update", "give_up",
                  extra={"variation": state.current_variation_idx})
         
@@ -59,6 +61,7 @@ def memory_update_node(state: WorkflowState) -> WorkflowState:
             state.edit_retry_count = 0
             state.fast_qa_result = None
             state.vision_qa_result = None
+            state.image_attempts = []  # Clear attempts for next variation
         else:
             _advance_shot(state)
     
@@ -113,10 +116,11 @@ def _accept_frame(state: WorkflowState, memory: MemoryService) -> None:
 
 
 def _advance_shot(state: WorkflowState) -> None:
-    """Advance to the next shot or scene."""
-    # Reset for next shot
-    print("[MemoryUpdate] ➡️ Moving to next shot ...")
-    state.current_shot_idx += 1
+    """Advance to the next shot and update current scene if needed."""
+    # Clear image attempts when advancing shot
+    state.image_attempts = []
+    
+    # Reset workflow state for next shot
     state.current_variation_idx = 0
     state.retry_count = 0
     state.edit_retry_count = 0
@@ -128,17 +132,29 @@ def _advance_shot(state: WorkflowState) -> None:
     state.current_image_b64 = None
     state.current_image_path = None
     
-    # Check if we need to advance to next scene
-    # (Assuming 3 shots per scene as a default)
-    shots_per_scene = 3
+    print(f"[MemoryUpdate] ➡️ Moving to next shot ...")
+    
+    # Use configurable shots per scene, default to 1 for script-driven workflows
+    shots_per_scene = state.config.get("shots_per_scene", 1)
+    
+    state.current_shot_idx += 1
+    
     if state.current_shot_idx >= shots_per_scene:
-        state.current_scene_idx += 1
+        # Move to next scene
         state.current_shot_idx = 0
+        state.current_scene_idx += 1
         
-        print(f"[MemoryUpdate] 🎬 Starting Scene {state.current_scene_idx + 1}")
-
-        log_entry(state, "memory_update", "next_scene",
-                 extra={"scene_idx": state.current_scene_idx})
+        # Check if we have more scenes
+        if state.current_scene_idx < len(state.scenes):
+            print(f"[MemoryUpdate] 🎬 Starting Scene {state.current_scene_idx + 1}")
+            log_entry(state, "memory_update", "next_scene",
+                     extra={"scene_idx": state.current_scene_idx})
+        else:
+            # No more scenes - workflow complete
+            state.workflow_complete = True
+            log_entry(state, "memory_update", "workflow_complete",
+                     extra={"total_scenes": len(state.scenes),
+                           "total_frames": len(state.accepted_frames)})
     else:
         log_entry(state, "memory_update", "next_shot",
                  extra={"shot_idx": state.current_shot_idx})
@@ -161,3 +177,44 @@ def _save_frame_metadata(state: WorkflowState, frame_data: Dict[str, Any]) -> No
     # Save back
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2, default=str) 
+
+
+def _save_rejected_images(state: WorkflowState) -> None:
+    """Save rejected images to a separate directory for manual curation."""
+    if not state.image_attempts:
+        return
+    
+    from pathlib import Path
+    import shutil
+    import json
+    
+    # Create rejected frames directory
+    rejected_dir = Path(state.output_dir) / "rejected_frames"
+    rejected_dir.mkdir(parents=True, exist_ok=True)
+    
+    for attempt in state.image_attempts:
+        try:
+            source_path = Path(attempt["image_path"])
+            if source_path.exists():
+                rejected_path = rejected_dir / source_path.name
+                shutil.move(str(source_path), str(rejected_path))
+                print(f"[MemoryUpdate] Moved rejected image to {rejected_path}")
+                
+                # Save metadata about why it was rejected
+                metadata_path = rejected_dir / f"{source_path.stem}_metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump({
+                        "frame_id": attempt["frame_id"],
+                        "quality_score": attempt.get("quality_score", 0.0),
+                        "retry_count": attempt["retry_count"],
+                        "edit_retry_count": attempt["edit_retry_count"],
+                        "timestamp": attempt["timestamp"],
+                        "reason": "variation_given_up"
+                    }, f, indent=2)
+        except Exception as e:
+            print(f"[MemoryUpdate] Error saving rejected image: {e}")
+    
+    print(f"[MemoryUpdate] Saved {len(state.image_attempts)} rejected images")
+    
+    # Clear attempts after saving
+    state.image_attempts = [] 

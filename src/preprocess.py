@@ -31,6 +31,12 @@ class ScriptPreprocessor:
         # If regex fails or produces too few scenes, use GPT
         if not scenes or len(scenes) < 2:
             scenes = self._gpt_parse(script_content)
+        else:
+            # Regex succeeded but didn't extract location/time, so extract them separately
+            scenes = self._extract_location_time_from_scenes(scenes)
+        
+        # Extract entities from scenes if not already populated
+        scenes = self._extract_entities_from_scenes(scenes)
         
         return scenes
     
@@ -38,12 +44,13 @@ class ScriptPreprocessor:
         """Try to parse script using regex patterns."""
         scenes = []
         
-        # Common scene heading patterns
+        # Common scene heading patterns (more specific to avoid false positives)
         patterns = [
-            r'^#+\s*Scene\s+(\d+)[:\s-]*(.*)$',  # # Scene 1: Description
-            r'^Scene\s+(\d+)[:\s-]*(.*)$',        # Scene 1: Description
-            r'^\[Scene\s+(\d+)\][:\s-]*(.*)$',    # [Scene 1]: Description
-            r'^(\d+)\.\s+(.*)$',                  # 1. Description
+            r'^#+\s*Scene\s+(\d+)[:\s-]*(.*)$',     # # Scene 1: Description
+            r'^Scene\s+(\d+)[:\s-]*(.*)$',          # Scene 1: Description
+            r'^\[Scene\s+(\d+)\][:\s-]*(.*)$',      # [Scene 1]: Description
+            r'^(\d+)\.\s*Scene[:\s-]*(.*)$',        # 1. Scene: Description
+            r'^(\d+)\.\s*([A-Z][^.]*(?:\.|$))',     # 1. DESCRIPTION (only if uppercase start)
         ]
         
         lines = script_content.split('\n')
@@ -147,6 +154,167 @@ class ScriptPreprocessor:
             log_entry(self.state, "preprocess_script", "error", 
                      model=model, error=str(e))
             # Return empty list on error
+            return []
+    
+    def _extract_location_time_from_scenes(self, scenes: List[SceneData]) -> List[SceneData]:
+        """Use GPT to extract location and time from scene text if not already present."""
+        if not scenes:
+            return scenes
+        
+        model = self.state.config["models"].get("script_parser", "gpt-4o")
+        
+        for scene in scenes:
+            if scene.location and scene.time:
+                continue  # Skip if already populated
+                
+            prompt = f"""Extract location and time from the following scene text.
+
+Scene {scene.scene_id}:
+{scene.raw_text[:500]}
+
+Return a JSON object with keys "location" and "time". Use null if not specified.
+Example: {{"location": "Inside the battleship", "time": "night"}}
+"""
+            
+            try:
+                response = call_openai_with_retry(
+                    self.client,
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a location and time extractor. Return only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=200
+                )
+                
+                content = response.choices[0].message.content.strip()
+                tokens = response.usage.total_tokens
+                cost = calculate_cost(model, response.usage.prompt_tokens, response.usage.completion_tokens)
+                
+                self.state.total_tokens += tokens
+                self.state.total_cost += cost
+                
+                log_entry(self.state, "extract_location_time", "success",
+                         model=model, tokens=tokens, cost_usd=cost,
+                         extra={"scene_id": scene.scene_id})
+                
+                data = parse_json_response(content)
+                scene.location = data.get("location")
+                scene.time = data.get("time")
+                
+            except Exception as e:
+                log_entry(self.state, "extract_location_time", "error",
+                         model=model, error=str(e),
+                         extra={"scene_id": scene.scene_id})
+        
+        return scenes
+    
+    def _extract_entities_from_scenes(self, scenes: List[SceneData]) -> List[SceneData]:
+        """Extract entities from scene text and populate entities field."""
+        if not scenes:
+            return scenes
+        
+        # Get known entities from state
+        known_entities = set()
+        if self.state.entities_dict:
+            known_entities.update(self.state.entities_dict.keys())
+        
+        # Common character names and entities to look for (fallback if entities.md not loaded)
+        common_entities = {
+            'Helena', 'Joy', 'Tanaka', 'Mr. Tanaka', 'Urmutter', 
+            'Silicate', 'battleship', 'infantry', 'mech', 'mechs'
+        }
+        all_entities = known_entities.union(common_entities)
+        
+        # Process each scene
+        for scene in scenes:
+            # Skip if entities already populated (from GPT parsing)
+            if scene.entities:
+                continue
+                
+            # Extract entities mentioned in the scene text
+            scene_entities = []
+            scene_text_lower = scene.raw_text.lower()
+            
+            for entity in all_entities:
+                # Check for entity mentions (case-insensitive)
+                entity_lower = entity.lower()
+                if (entity_lower in scene_text_lower or 
+                    entity.lower() in scene_text_lower or
+                    any(variant in scene_text_lower for variant in [
+                        f" {entity_lower} ", f" {entity_lower}'s ", f" {entity_lower}.",
+                        f" {entity_lower},", f" {entity_lower}!", f" {entity_lower}?",
+                        f"({entity_lower}", f"{entity_lower})", f"\"{entity_lower}\""
+                    ])):
+                    scene_entities.append(entity)
+            
+            # Also use GPT for more accurate entity extraction if we have a budget
+            if self.state.config.get('preprocess', {}).get('script') == 'auto':
+                gpt_entities = self._gpt_extract_entities(scene.raw_text, scene.scene_id)
+                # Merge with rule-based entities
+                all_found = set(scene_entities + gpt_entities)
+                scene_entities = list(all_found)
+            
+            scene.entities = scene_entities
+            
+        log_entry(self.state, "extract_entities", "success", 
+                 extra={"scenes_processed": len(scenes), 
+                       "entities_found": sum(len(s.entities) for s in scenes)})
+        
+        return scenes
+    
+    def _gpt_extract_entities(self, scene_text: str, scene_id: int) -> List[str]:
+        """Use GPT to extract entities from a single scene."""
+        if not scene_text.strip():
+            return []
+            
+        # Get known entities for context
+        known_entities_list = list(self.state.entities_dict.keys()) if self.state.entities_dict else []
+        known_entities_str = ", ".join(known_entities_list) if known_entities_list else "Helena, Joy, Tanaka, Urmutter, Silicate"
+        
+        model = self.state.config["models"].get("script_parser", "gpt-4o")
+        
+        prompt = f"""Extract character names, important objects, and entities mentioned in this scene.
+
+Known entities to look for: {known_entities_str}
+
+Scene {scene_id} text:
+{scene_text[:500]}
+
+Return ONLY a JSON array of entity names mentioned in this scene.
+Example: ["Helena", "Joy", "Silicate infantry"]
+"""
+        
+        try:
+            response = call_openai_with_retry(
+                self.client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You extract entities from text. Return only JSON arrays."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=150
+            )
+            
+            content = response.choices[0].message.content.strip()
+            tokens = response.usage.total_tokens
+            cost = calculate_cost(model, response.usage.prompt_tokens, response.usage.completion_tokens)
+            
+            self.state.total_tokens += tokens
+            self.state.total_cost += cost
+            
+            # Parse the JSON response
+            entities = parse_json_response(content)
+            if isinstance(entities, list):
+                return [str(e) for e in entities if e]
+            else:
+                return []
+                
+        except Exception as e:
+            log_entry(self.state, "gpt_extract_entities", "error",
+                     extra={"scene_id": scene_id, "error": str(e)})
             return []
 
 
@@ -321,10 +489,10 @@ Return as JSON."""
             # Parse response
             data = parse_json_response(content)
             
-            # Use previously computed fallback_entity
+            # Use GPT-identified entity first, fallback_entity only if GPT didn't identify one
             return {
                 "category": data.get("category", "other"),
-                "entity": fallback_entity,
+                "entity": data.get("entity", fallback_entity),
                 "tags": data.get("tags", []),
                 "confidence": float(data.get("confidence", 0.5))
             }
@@ -347,11 +515,12 @@ Return as JSON."""
         
         try:
             # text-embedding-3-large supports dimensions parameter
+            embedding_dim = self.state.config.get("embedding_dimension", 1536)
             response = call_openai_with_retry(
                 self.client,
                 model=model,
                 input=text,
-                dimensions=1536  # Specify 1536 dimensions for compatibility
+                dimensions=embedding_dim  # Use configurable dimension
             )
             
             embedding = response.data[0].embedding
@@ -365,7 +534,7 @@ Return as JSON."""
             
         except Exception as e:
             # Return zero vector on error
-            return [0.0] * 1536 
+            return [0.0] * self.state.config.get("embedding_dimension", 1536) 
 
 
 # ------------------------------------------------------------

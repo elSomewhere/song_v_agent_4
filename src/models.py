@@ -108,6 +108,9 @@ class WorkflowState(BaseModel):
     current_image_b64: Optional[str] = None
     accepted_frames: List[Dict[str, Any]] = []
     
+    # Track all image attempts for best selection and rejected image saving
+    image_attempts: List[Dict[str, Any]] = []  # All generated images with scores
+    
     # Metrics and logging
     total_tokens: int = 0
     total_cost: float = 0.0
@@ -129,8 +132,19 @@ class WorkflowState(BaseModel):
     # Shared context summary for renderer prompts
     static_summary: Optional[str] = None
     
+    # Shared memory service instance (singleton pattern)
+    _memory_service: Optional[Any] = None
+    
     # Workflow control
     workflow_complete: bool = False
+    
+    def get_memory_service(self):
+        """Get singleton MemoryService instance to avoid multiple connections."""
+        if self._memory_service is None:
+            # Import here to avoid circular dependency
+            from src.memory import MemoryService
+            self._memory_service = MemoryService(self)
+        return self._memory_service
 
 
 class LogEntry(BaseModel):

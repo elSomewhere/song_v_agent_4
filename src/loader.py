@@ -18,6 +18,20 @@ class Loader:
         """Initialize loader with configuration."""
         self.config = self._load_config(config_path)
     
+    def _deep_merge_configs(self, base_config: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge configuration dictionaries."""
+        result = base_config.copy()
+        
+        for key, value in overrides.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                # Recursively merge nested dictionaries
+                result[key] = self._deep_merge_configs(result[key], value)
+            else:
+                # Override or add new key
+                result[key] = value
+        
+        return result
+    
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration from YAML file or fallback to default."""
         if Path(config_path).exists():
@@ -122,10 +136,10 @@ class Loader:
         # Load input files
         inputs = self.load_input_files(script_path, style_path, entities_path)
         
-        # Merge config with overrides
+        # Deep merge config with overrides
         config = self.config.copy()
         if config_overrides:
-            config.update(config_overrides)
+            config = self._deep_merge_configs(config, config_overrides)
         
         # ------------------------------------------------------------------
         # Create static summary of script, entities, style (once per run)
@@ -168,21 +182,21 @@ class Loader:
         output_path = Path(state.output_dir)
         
         # Save config
-        with open(output_path / "config.yaml", 'w') as f:
+        with open(output_path / "config.yaml", 'w', encoding='utf-8') as f:
             yaml.dump(state.config, f)
         
         # Save raw inputs
-        with open(output_path / "script.md", 'w') as f:
+        with open(output_path / "script.md", 'w', encoding='utf-8') as f:
             f.write(inputs["script"])
         
-        with open(output_path / "style.md", 'w') as f:
+        with open(output_path / "style.md", 'w', encoding='utf-8') as f:
             f.write(inputs["style"])
         
-        with open(output_path / "entities.md", 'w') as f:
+        with open(output_path / "entities.md", 'w', encoding='utf-8') as f:
             f.write(inputs["entities"])
         
         # Initialize empty logs.jsonl
-        with open(output_path / "logs.jsonl", 'w') as f:
+        with open(output_path / "logs.jsonl", 'w', encoding='utf-8') as f:
             pass 
 
     # ------------------------------------------------------------------

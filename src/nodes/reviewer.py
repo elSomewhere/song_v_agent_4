@@ -15,7 +15,7 @@ from src.memory import MemoryService
 def reviewer_node(state: WorkflowState) -> WorkflowState:
     """Review and adjust the plan with visual context using GPT-4o."""
     client = get_openai_client()
-    memory = MemoryService(state)
+    memory = state.get_memory_service()  # Use singleton memory service
     
     # Check budget
     if not check_budget(state):
@@ -33,13 +33,22 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     plan = state.current_plan
     
     # ------------------------------------------------------------------
-    # 1) Local visual context (nearby frames + entity-based refs)
+    # 1) Enhanced visual context (local + global consistency)
     # ------------------------------------------------------------------
-    nearby_frames, relevant_refs = memory.get_visual_context(
-        plan.scene_id,
-        plan.shot_id,
-        window_size=state.config.get("ctx_window", 4)
-    )
+    if state.config.get("context_mode") == "enhanced" and hasattr(memory, 'get_enhanced_visual_context'):
+        nearby_frames, relevant_refs, global_context = memory.get_enhanced_visual_context(
+            plan.scene_id,
+            plan.shot_id,
+            window_size=state.config.get("ctx_window", 4)
+        )
+    else:
+        # Fallback to basic context
+        nearby_frames, relevant_refs = memory.get_visual_context(
+            plan.scene_id,
+            plan.shot_id,
+            window_size=state.config.get("ctx_window", 4)
+        )
+        global_context = {}
     
     # ------------------------------------------------------------------
     # 2) Broader hybrid retrieval for additional references
@@ -50,7 +59,7 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
         txt_hits, img_hits = memory.hybrid_retrieve(prompt_embed, ent_names, plan.shot_id, k_txt=10, k_img=6)
 
         # Convert hits to dicts and extend relevant_refs
-        ref_extra = [h._asdict() for h in img_hits] if img_hits else []
+        ref_extra = [h._asdict() for h in img_hits] if img_hits is not None and len(img_hits) > 0 else []
         # Avoid duplicates (by frame_id)
         seen_ids = {r.get("frame_id") for r in relevant_refs}
         for r in ref_extra:
@@ -63,8 +72,8 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     # Get top reference images to show
     visual_refs = _get_visual_references(state, relevant_refs, limit=state.config.get("ctx_images", 3))
     
-    # Build prompt with visual context & canonical entity info
-    prompt = _build_reviewer_prompt(state, plan, nearby_frames, relevant_refs, visual_refs, memory)
+    # Build prompt with enhanced visual context & canonical entity info
+    prompt = _build_reviewer_prompt(state, plan, nearby_frames, relevant_refs, visual_refs, memory, global_context)
     
     # Build messages with images
     messages = [
@@ -75,7 +84,7 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
     # Add reference images to the prompt
     for ref_info in visual_refs:
         if ref_info.get("base64"):
-            messages[0]["content"].append({
+            messages[1]["content"].append({
                 "type": "image_url",
                 "image_url": {
                     "url": f"data:image/jpeg;base64,{ref_info['base64']}",
@@ -110,6 +119,14 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
             negative_prompt=review_data.get("negative_prompt", ""),
             estimated_tokens=review_data.get("estimated_tokens", 1000)
         )
+        
+        # Debug logging for visual context
+        if relevant_refs:
+            print(f"[Reviewer] Found {len(relevant_refs)} relevant references for Scene {plan.scene_id} Shot {plan.shot_id}")
+            ref_ids = [ref["frame_id"] for ref in relevant_refs[:3]]
+            print(f"[Reviewer] Visual context IDs: {ref_ids}")
+        else:
+            print(f"[Reviewer] No relevant references found for Scene {plan.scene_id} Shot {plan.shot_id}")
         
         # Apply any suggested modifications to the plan
         if "modified_prompt" in review_data:
@@ -176,7 +193,8 @@ def _get_visual_references(state: WorkflowState, refs: List[Dict],
 
 def _build_reviewer_prompt(state: WorkflowState, plan: ScenePlan,
                           nearby_frames: List[Dict], relevant_refs: List[Dict],
-                          visual_refs: List[Dict], memory: MemoryService) -> str:
+                          visual_refs: List[Dict], memory: MemoryService, 
+                          global_context: Dict[str, Any] = None) -> str:
     """Build the prompt for the reviewer including canonical entity descriptions."""
     
     # Format nearby frames context
@@ -196,6 +214,13 @@ def _build_reviewer_prompt(state: WorkflowState, plan: ScenePlan,
             canon_lines.append(f"{ent.name}: {desc}")
     canonical_block = "\n".join(canon_lines) if canon_lines else "None available"
     
+    # Build global consistency section
+    global_consistency_section = ""
+    if global_context and hasattr(memory, 'build_global_consistency_prompt'):
+        global_consistency_section = memory.build_global_consistency_prompt(global_context)
+        if global_consistency_section:
+            global_consistency_section = f"GLOBAL CONSISTENCY CONTEXT:\n{global_consistency_section}"
+    
     prompt = f"""Review this storyboard shot plan for visual consistency and quality.
 
 Current Plan:
@@ -211,6 +236,8 @@ Reference Images Available: {len(visual_refs)} images showing relevant character
 
 Canonical Entity Descriptions (ground truth):
 {canonical_block}
+
+{global_consistency_section}
 
 Your review should:
 1. Check visual consistency with previous frames

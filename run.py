@@ -53,7 +53,7 @@ def preprocess_script_node(state: WorkflowState) -> WorkflowState:
     # Index canonical entity descriptions (once per run)
     # ------------------------------------------------------------------
     if state.entities_dict:
-        MemoryService(state).index_canonical_entities(state.entities_dict)
+        state.get_memory_service().index_canonical_entities(state.entities_dict)
     
     log_entry(state, "preprocess_script", "success",
              extra={"scenes_found": len(state.scenes)})
@@ -72,7 +72,7 @@ def preprocess_refs_node(state: WorkflowState) -> WorkflowState:
     state.ref_index = ref_metas
     
     # Index in memory
-    memory = MemoryService(state)
+    memory = state.get_memory_service()  # Use singleton memory service
     memory.index_references(ref_metas)
     
     log_entry(state, "preprocess_refs", "success",
@@ -106,7 +106,7 @@ def enrich_entities_node(state: WorkflowState) -> WorkflowState:
             print(f"[EnrichEntities] Warning: couldn't write enriched entities: {e}")
 
         # Re-index in memory
-        MemoryService(state).index_canonical_entities(merged)
+        state.get_memory_service().index_canonical_entities(merged)
 
     return state
 
@@ -173,7 +173,7 @@ def preprocess_entities_node(state: WorkflowState) -> WorkflowState:
 
     # Index canonical entities into memory for retrieval
     if state.entities_dict:
-        MemoryService(state).index_canonical_entities(state.entities_dict)
+        state.get_memory_service().index_canonical_entities(state.entities_dict)
 
     return state
 
@@ -240,6 +240,11 @@ def generate_final_report(state: WorkflowState) -> None:
     
     # Save metrics.json
     metrics_path = collector.save_metrics()
+    
+    # Export memory data to output directory
+    memory = state.get_memory_service()  # Use singleton memory service
+    memory_output_dir = Path(state.output_dir) / "memory"
+    memory.export_memory_to_output(str(memory_output_dir))
     
     # Get metrics for report
     metrics = collector.collect_from_logs()

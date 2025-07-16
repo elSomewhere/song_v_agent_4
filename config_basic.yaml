@@ -1,0 +1,5 @@
+budget_usd: 25
+context_mode: basic
+ctx_images: 3
+ctx_window: 4
+global_context_enabled: false

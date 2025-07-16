@@ -36,6 +36,10 @@ def fast_qa_node(state: WorkflowState) -> WorkflowState:
     qa_result = _perform_fast_qa(client, state, current_variation)
     state.fast_qa_result = qa_result
     
+    # Update quality score in latest attempt
+    if state.image_attempts:
+        state.image_attempts[-1]["quality_score"] = qa_result.quality_score
+    
     # Randomly sample for deep vision QA (10% chance)
     if qa_result.status == "pass" and random.random() < 0.1:
         state.fast_qa_flag = True
@@ -100,9 +104,9 @@ def _perform_fast_qa(client: Any, state: WorkflowState, variation: Any) -> QARes
             status = "fail"
             quality_score = 0.3
         else:
-            # Default to pass if unclear
-            status = "pass" 
-            quality_score = 0.7
+            # Default to retry if unclear - be conservative for consistency
+            status = "retry" 
+            quality_score = 0.5
         
         # Create QAResult
         qa_result = QAResult(
@@ -120,10 +124,10 @@ def _perform_fast_qa(client: Any, state: WorkflowState, variation: Any) -> QARes
         
     except Exception as e:
         log_entry(state, "fast_qa", "error", error=str(e))
-        # Default to pass on error (lenient)
+        # Default to fail on error - fail safe for consistency
         return QAResult(
-            status="pass",
-            quality_score=0.7,
-            specific_issues=[],
-            retry_guidance=None
+            status="fail",
+            quality_score=0.0,
+            specific_issues=["QA system error: " + str(e)],
+            retry_guidance="QA failed due to system error"
         )

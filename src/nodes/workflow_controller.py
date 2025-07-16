@@ -26,8 +26,9 @@ def workflow_controller_node(state: WorkflowState) -> WorkflowState:
         state.current_shot_idx += 1
         
         # Check if we need to move to next scene
-        # Assuming 10 shots per scene as a default
-        if state.current_shot_idx >= 10:
+        # Use configurable shots per scene, default to 1 for script-driven workflows
+        shots_per_scene = state.config.get("shots_per_scene", 1)
+        if state.current_shot_idx >= shots_per_scene:
             state.current_shot_idx = 0
             state.current_scene_idx += 1
             

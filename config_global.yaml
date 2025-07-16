@@ -1,0 +1,15 @@
+budget_usd: 75
+character_consistency_window: 100
+consistency_tracking:
+  characters: true
+  environments: true
+  narrative_flow: true
+  style_elements: true
+context_mode: enhanced
+ctx_images: 10
+ctx_window: 12
+environment_consistency_window: 75
+global_context_enabled: true
+global_ctx_weight: 0.5
+global_ctx_window: 50
+token_cap: 6000

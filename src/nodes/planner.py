@@ -14,7 +14,7 @@ from src.memory import MemoryService
 def planner_node(state: WorkflowState) -> WorkflowState:
     """Create a plan for the current scene using GPT-4o."""
     client = get_openai_client()
-    memory = MemoryService(state)
+    memory = state.get_memory_service()  # Use singleton memory service
     
     # Check budget
     if not check_budget(state):
@@ -32,15 +32,24 @@ def planner_node(state: WorkflowState) -> WorkflowState:
     
     current_scene = state.scenes[state.current_scene_idx]
     
-    # Get visual context from memory
-    nearby_frames, relevant_refs = memory.get_visual_context(
-        current_scene.scene_id, 
-        state.current_shot_idx + 1,
-        window_size=state.config.get("ctx_window", 4)
-    )
+    # Get enhanced visual context from memory
+    if state.config.get("context_mode") == "enhanced" and hasattr(memory, 'get_enhanced_visual_context'):
+        nearby_frames, relevant_refs, global_context = memory.get_enhanced_visual_context(
+            current_scene.scene_id, 
+            state.current_shot_idx + 1,
+            window_size=state.config.get("ctx_window", 4)
+        )
+    else:
+        # Fallback to basic context
+        nearby_frames, relevant_refs = memory.get_visual_context(
+            current_scene.scene_id, 
+            state.current_shot_idx + 1,
+            window_size=state.config.get("ctx_window", 4)
+        )
+        global_context = {}
     
-    # Build context for planner
-    context = _build_planner_context(state, current_scene, nearby_frames, relevant_refs)
+    # Build context for planner (including global context)
+    context = _build_planner_context(state, current_scene, nearby_frames, relevant_refs, global_context)
     
     # Create prompt
     prompt = f"""You are planning a shot for a storyboard. Create a detailed plan for this scene.
@@ -60,6 +69,8 @@ Visual Context:
 
 Previous frames summary:
 {context['frames_summary']}
+
+{context['global_consistency']}
 
 Create a shot plan with:
 1. entities: List of entities in the shot with poses/emotions
@@ -144,11 +155,13 @@ Return as JSON matching this structure:
 
 
 def _build_planner_context(state: WorkflowState, current_scene: Any,
-                          nearby_frames: List[Dict], relevant_refs: List[Dict]) -> Dict[str, Any]:
+                          nearby_frames: List[Dict], relevant_refs: List[Dict],
+                          global_context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Build context information for the planner."""
     context = {
         "frames_summary": "",
-        "refs_summary": ""
+        "refs_summary": "",
+        "global_consistency": ""
     }
     
     # Summarize nearby frames
@@ -171,5 +184,18 @@ def _build_planner_context(state: WorkflowState, current_scene: Any,
         context["refs_summary"] = "\n".join(ref_summaries)
     else:
         context["refs_summary"] = "No reference images"
+    
+    # Add global consistency information if available
+    if global_context:
+        from src.memory import MemoryService
+        if hasattr(MemoryService, 'build_global_consistency_prompt'):
+            # Use singleton memory service instance
+            temp_memory = state.get_memory_service()
+            global_consistency_text = temp_memory.build_global_consistency_prompt(global_context)
+            context["global_consistency"] = global_consistency_text if global_consistency_text else "No global consistency data"
+        else:
+            context["global_consistency"] = "Global consistency tracking not available"
+    else:
+        context["global_consistency"] = "No global context available"
     
     return context 
