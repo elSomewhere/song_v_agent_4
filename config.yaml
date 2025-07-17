@@ -59,6 +59,9 @@ preprocess:
 # budget
 budget_usd: 50
 
+# render engine
+render_engine: openai  # openai | midjourney
+
 ################################
 # model map (explicit — do NOT swap)
 models:

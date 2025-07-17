@@ -60,6 +60,9 @@ DEFAULT_CONFIG = {
     # Budget
     "budget_usd": 35,
 
+    # Render engine selection
+    "render_engine": "openai",  # values: "openai" | "midjourney"
+
     # Explicit model map (do NOT swap)
     "models": {
         "embedding_text": "text-embedding-3-large",
@@ -76,6 +79,8 @@ DEFAULT_CONFIG = {
         "ref_tagger": "gpt-4o-vision-preview",  # alias for vision model
         # Reranker
         "reranker_text": "gpt-4o-mini",
+        # Midjourney prompt converter
+        "midjourney_converter": "gpt-4o",
     },
 
     # Retrieval settings

@@ -29,6 +29,8 @@ from src.nodes.vision_qa import vision_qa_node
 from src.nodes.policy import policy_node
 from src.nodes.memory_update import memory_update_node
 from src.nodes.workflow_controller import workflow_controller_node
+from src.nodes.prompt_saver import prompt_saver_node
+from src.nodes.midjourney_converter import midjourney_converter_node
 
 
 def preprocess_script_node(state: WorkflowState) -> WorkflowState:
@@ -140,6 +142,24 @@ def should_controller_to_planner(state: WorkflowState) -> str:
         return "planner"
 
 
+def should_render_or_save_prompt(state: WorkflowState) -> str:
+    """Conditional edge after variation_mgr to either render images or save prompts."""
+    render_engine = state.config.get("render_engine", "openai")
+    if render_engine == "midjourney":
+        return "prompt_saver"
+    else:
+        return "renderer"
+
+
+def should_convert_or_update(state: WorkflowState) -> str:
+    """Conditional edge after prompt_saver to midjourney converter or memory update."""
+    render_engine = state.config.get("render_engine", "openai")
+    if render_engine == "midjourney":
+        return "midjourney_converter"
+    else:
+        return "memory_update"
+
+
 def preprocess_entities_node(state: WorkflowState) -> WorkflowState:
     """Parse entities.md into structured dict using GPT if needed."""
     # Skip if we already have parsed entities (JSON was present)
@@ -199,12 +219,14 @@ def build_workflow() -> StateGraph:
     graph.add_edge("preprocess_refs", "enrich_entities")
     graph.add_edge("enrich_entities", "planner")
     
-    # Main loop nodes - exactly as specified
+    # Main loop nodes - including new midjourney nodes
     for name, node in [
         ("planner", planner_node),
         ("reviewer", reviewer_node),
         ("variation_mgr", variation_mgr_node),
         ("renderer", renderer_node),
+        ("prompt_saver", prompt_saver_node),  # New: for midjourney mode
+        ("midjourney_converter", midjourney_converter_node),  # New: for midjourney mode
         ("fast_qa", fast_qa_node),
         ("vision_qa", vision_qa_node),
         ("policy", policy_node),
@@ -213,16 +235,22 @@ def build_workflow() -> StateGraph:
     ]:
         graph.add_node(name, node)
     
-    # Main loop edges - exactly as specified
+    # Main loop edges - with conditional routing for render engine
     graph.add_edge("planner", "reviewer")
     graph.add_edge("reviewer", "variation_mgr")
-    graph.add_edge("variation_mgr", "renderer")
-    graph.add_edge("renderer", "fast_qa")
     
-    # Conditional edges as specified
+    # Conditional routing: OpenAI mode vs Midjourney mode
+    graph.add_conditional_edges("variation_mgr", should_render_or_save_prompt)
+    
+    # OpenAI workflow path (existing)
+    graph.add_edge("renderer", "fast_qa")
     graph.add_conditional_edges("fast_qa", should_sample_vision_qa)
     graph.add_edge("vision_qa", "policy")
     graph.add_conditional_edges("policy", should_retry_or_update)
+    
+    # Midjourney workflow path (new)
+    graph.add_edge("prompt_saver", "midjourney_converter")
+    graph.add_edge("midjourney_converter", "workflow_controller")
     
     # Memory update continues to workflow controller
     graph.add_conditional_edges("memory_update", should_continue_workflow)
@@ -324,6 +352,7 @@ def main():
     parser.add_argument("--enable-style-embedding", action="store_true", help="Enable visual style embedding for improved reference retrieval")
     parser.add_argument("--aspect-ratio", choices=["square", "landscape", "portrait", "auto"], default="square", 
                        help="Aspect ratio for generated images (square=1024x1024, landscape=1536x1024, portrait=1024x1536, auto=model chooses)")
+    parser.add_argument("--renderer", choices=["openai", "midjourney"], help="Render engine: openai for image generation, midjourney for prompt optimization")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     
     args = parser.parse_args()
@@ -351,6 +380,7 @@ def main():
         "max_retries": args.max_retries,
         "style_embedding_enabled": args.enable_style_embedding,
         "aspect_ratio": args.aspect_ratio,
+        "render_engine": args.renderer or "openai",  # Override render engine if specified
         "preprocess": {
             "script": "auto" if args.ai_preprocess_script else "heuristic",
             "refs": "auto" if args.ai_preprocess_refs else "skip",
@@ -376,7 +406,10 @@ def main():
     print(f"Output directory: {state.output_dir}")
     print(f"Budget: ${state.budget_usd}")
     print(f"Variations per shot: {state.n_variations}")
+    print(f"Render engine: {state.config.get('render_engine', 'openai')}")
     print(f"Style embedding: {'enabled' if args.enable_style_embedding else 'disabled'}")
+    if state.config.get('render_engine') == 'midjourney':
+        print(f"✨ Midjourney mode: Generating optimized prompts instead of images")
     print()
     
     # Build and run workflow

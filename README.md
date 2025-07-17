@@ -65,8 +65,26 @@ python run.py --script path/to/script.md \
 - `--refs`: Path to reference images directory (default: data/refs)
 - `--budget`: Budget limit in USD (overrides config)
 - `--variations`: Number of camera variations per shot (overrides config)
+- `--renderer`: Render engine (`openai` for image generation, `midjourney` for prompt optimization)
 - `--config`: Path to config file (default: config.yaml)
 - `--no-refs`: Skip reference image processing
+
+### Midjourney Mode
+
+Use `--renderer midjourney` to generate Midjourney-optimized prompts instead of images:
+
+```bash
+python run.py --renderer midjourney \
+              --ai-preprocess-script --ai-preprocess-refs --ai-preprocess-entities \
+              --config config_enhanced.yaml
+```
+
+This mode:
+- Preserves all AI preprocessing (script parsing, entity extraction, reference analysis)
+- Generates contextual prompts in `./prompts/` folder
+- Converts them to Midjourney v6 optimized prompts in `./prompts_midjourney/` folder
+- Skips expensive image generation, reducing costs by ~75%
+- Maintains all visual context and consistency intelligence
 
 ### Input File Formats
 
@@ -117,7 +135,9 @@ Each run creates a timestamped output directory:
 ```
 output/
 └── run_20240115_143022/
-    ├── frames/           # Generated storyboard frames
+    ├── frames/           # Generated storyboard frames (OpenAI mode)
+    ├── prompts/          # Raw contextual prompts (all modes)
+    ├── prompts_midjourney/  # Midjourney-optimized prompts (Midjourney mode)
     ├── variations/       # Alternative camera angles
     ├── memory/          # LanceDB vector storage
     ├── logs.jsonl       # Detailed execution logs

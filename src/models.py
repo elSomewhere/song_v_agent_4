@@ -106,6 +106,7 @@ class WorkflowState(BaseModel):
     # Generated outputs
     current_image_path: Optional[str] = None
     current_image_b64: Optional[str] = None
+    current_raw_prompt_path: Optional[str] = None  # For midjourney mode
     accepted_frames: List[Dict[str, Any]] = []
     
     # Track all image attempts for best selection and rejected image saving
