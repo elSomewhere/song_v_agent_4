@@ -11,7 +11,7 @@ from src.models import WorkflowState
 from src.utils import (
     get_openai_client, call_openai_with_retry, log_entry,
     calculate_image_cost, check_budget, save_base64_image,
-    load_image_as_base64
+    load_image_as_base64, get_image_size_from_aspect_ratio
 )
 from src.memory import MemoryService
 
@@ -133,6 +133,10 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
     # Build the full prompt
     full_prompt = _build_image_prompt(state, variation)
     
+    # Get image size from aspect ratio configuration
+    aspect_ratio = state.config.get("aspect_ratio", "square")
+    image_size = get_image_size_from_aspect_ratio(aspect_ratio)
+    
     model = state.config["models"]["renderer_new"]
     
     if model == "gpt-image-1":
@@ -165,12 +169,12 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
                     model=model,
                     image=open(temp_files[0], 'rb'),  # Primary reference image
                     prompt=full_prompt,
-                    size="1024x1024",
+                    size=image_size,
                     quality=state.config.get("image_quality", "medium")
                 )
                 
                 image_b64 = response.data[0].b64_json
-                cost = 0.08  # Higher cost for gpt-image-1 with references
+                cost = calculate_image_cost(model, image_size, state.config.get("image_quality", "medium"))
                 
             finally:
                 # Clean up temporary files
@@ -188,13 +192,13 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
                 client,
                 model=model,
                 prompt=full_prompt,
-                size="1024x1024",
+                size=image_size,
                 quality=state.config.get("image_quality", "medium"),
                 output_format="png"
             )
             
             image_b64 = response.data[0].b64_json
-            cost = 0.04  # Standard cost for gpt-image-1
+            cost = calculate_image_cost(model, image_size, state.config.get("image_quality", "medium"))
     else:
         # Only gpt-image-1 is supported - no DALL-E or other models
         raise ValueError(f"Unsupported image generation model: {model}. Only 'gpt-image-1' is supported.")
@@ -211,6 +215,10 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
 def _render_edit(client: Any, state: WorkflowState, variation: Any,
                 ref_images: List[Dict]) -> Dict[str, Any]:
     """Edit an existing image using gpt-image-1 via Images API."""
+    
+    # Get image size from aspect ratio configuration
+    aspect_ratio = state.config.get("aspect_ratio", "square")
+    image_size = get_image_size_from_aspect_ratio(aspect_ratio)
     
     model = state.config["models"]["renderer_edit"]
     
@@ -252,12 +260,12 @@ def _render_edit(client: Any, state: WorkflowState, variation: Any,
                 model=model,
                 image=open(temp_files[0], 'rb'),
                 prompt=edit_instruction,
-                size="1024x1024",
+                size=image_size,
                 quality=state.config.get("image_quality", "medium")
             )
             
             image_b64 = response.data[0].b64_json
-            cost = 0.04  # Approximate cost for gpt-image-1 edit
+            cost = calculate_image_cost(model, image_size, state.config.get("image_quality", "medium"))
             
         finally:
             # Clean up temporary files

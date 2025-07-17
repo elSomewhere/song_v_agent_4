@@ -11,7 +11,7 @@ import io
 from src.models import WorkflowState, ScenePlan
 from src.utils import (
     get_openai_client, call_openai_with_retry, log_entry,
-    calculate_image_cost, save_base64_image, load_image_as_base64
+    calculate_image_cost, save_base64_image, load_image_as_base64, get_image_size_from_aspect_ratio
 )
 
 
@@ -98,6 +98,10 @@ def _render_single_variation(
     import openai
     client = openai.OpenAI()
     
+    # Get image size from aspect ratio configuration
+    aspect_ratio = config.get("aspect_ratio", "square")
+    image_size = get_image_size_from_aspect_ratio(aspect_ratio)
+    
     # Build prompt
     prompt_parts = []
     prompt_parts.append(variation.image_prompt)
@@ -128,13 +132,14 @@ def _render_single_variation(
             response = client.images.generate(
                 model=model,
                 prompt=full_prompt,
-                size="1024x1024",
+                size=image_size,
                 quality=config.get("image_quality", "medium"),
                 output_format="png"
             )
             
             image_b64 = response.data[0].b64_json
-            cost = 0.04  # Standard cost for gpt-image-1
+            from src.utils import calculate_image_cost
+            cost = calculate_image_cost(model, image_size, config.get("image_quality", "medium"))
         else:
             # Only gpt-image-1 is supported - no DALL-E or other models
             raise ValueError(f"Unsupported image generation model: {model}. Only 'gpt-image-1' is supported.")

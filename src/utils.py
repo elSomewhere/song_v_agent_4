@@ -19,6 +19,17 @@ from openai import OpenAI
 from src.models import LogEntry, WorkflowState
 
 
+def get_image_size_from_aspect_ratio(aspect_ratio: str) -> str:
+    """Map aspect ratio name to OpenAI API image size."""
+    aspect_ratio_map = {
+        "square": "1024x1024",
+        "landscape": "1536x1024", 
+        "portrait": "1024x1536",
+        "auto": "auto"
+    }
+    return aspect_ratio_map.get(aspect_ratio, "1024x1024")
+
+
 # Load pricing configuration from external file
 def _load_pricing_config() -> Dict[str, Any]:
     """Load pricing configuration from external YAML file."""
@@ -109,11 +120,14 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 def calculate_image_cost(model: str, size: str, quality: str) -> float:
     """Calculate cost for image generation."""
-    if model not in IMAGE_GEN_COST:
+    pricing_config = _load_pricing_config()
+    image_costs = pricing_config.get("image_costs", {})
+    
+    if model not in image_costs:
         return 0.0
     
-    size_costs = IMAGE_GEN_COST[model].get(size, IMAGE_GEN_COST[model]["1024x1024"])
-    return size_costs.get(quality, size_costs["medium"])
+    size_costs = image_costs[model].get(size, image_costs[model].get("1024x1024", {}))
+    return size_costs.get(quality, size_costs.get("medium", 0.0))
 
 
 def check_budget(state: WorkflowState) -> bool:

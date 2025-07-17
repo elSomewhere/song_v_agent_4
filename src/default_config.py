@@ -29,6 +29,10 @@ DEFAULT_CONFIG = {
     # Scene structure
     "shots_per_scene": 1,  # Number of shots to generate per scene
 
+    # Image generation
+    "aspect_ratio": "square",  # square | landscape | portrait | auto
+    "image_quality": "medium",  # low | medium | high | auto
+
     # Retries
     "max_retries": 2,
     "max_edit_retries": 1,

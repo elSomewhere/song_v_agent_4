@@ -322,6 +322,8 @@ def main():
     parser.add_argument("--ai-preprocess-refs", action="store_true", help="Use AI to preprocess references")
     parser.add_argument("--ai-preprocess-entities", action="store_true", help="Use AI to preprocess entities")
     parser.add_argument("--enable-style-embedding", action="store_true", help="Enable visual style embedding for improved reference retrieval")
+    parser.add_argument("--aspect-ratio", choices=["square", "landscape", "portrait", "auto"], default="square", 
+                       help="Aspect ratio for generated images (square=1024x1024, landscape=1536x1024, portrait=1024x1536, auto=model chooses)")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     
     args = parser.parse_args()
@@ -348,6 +350,7 @@ def main():
         "n_variations": args.n_variations,
         "max_retries": args.max_retries,
         "style_embedding_enabled": args.enable_style_embedding,
+        "aspect_ratio": args.aspect_ratio,
         "preprocess": {
             "script": "auto" if args.ai_preprocess_script else "heuristic",
             "refs": "auto" if args.ai_preprocess_refs else "skip",

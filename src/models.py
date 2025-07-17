@@ -186,7 +186,7 @@ class ImageGenerationRequest(BaseModel):
     prompt: str
     negative_prompt: Optional[str] = None
     reference_images: List[str] = []  # Base64 or file IDs
-    size: str = "1024x1024"
+    size: str = "auto"  # Default to auto, will be overridden by config
     quality: str = "standard"
     n: int = 1
     response_format: str = "b64_json"
@@ -197,6 +197,6 @@ class ImageEditRequest(BaseModel):
     image: str  # Base64 of image to edit
     instruction: str
     mask: Optional[str] = None  # Base64 of mask
-    size: str = "1024x1024"
+    size: str = "auto"  # Default to auto, will be overridden by config
     n: int = 1
     response_format: str = "b64_json" 

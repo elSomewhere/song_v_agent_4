@@ -37,8 +37,8 @@ consistency_tracking:
 ################################
 # Image generation quality - MAXIMUM
 ################################
+aspect_ratio: "square"           # square | landscape | portrait | auto  
 image_quality: "high"            # Use highest quality for gpt-image-1
-image_size: "1024x1024"          # High resolution
 variations_per_shot: 5           # More variations to choose from
 n_variations: 5
 
