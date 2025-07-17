@@ -10,6 +10,16 @@ character_consistency_window: 50  # Track character appearances
 environment_consistency_window: 30 # Track environment continuity
 token_cap:       4000          # GPT call cap
 
+# API Response Token Limits
+api_max_tokens:
+  planner: 1000
+  reviewer: 1500
+  variation_mgr: 1500
+  vision_qa: 1000
+  fast_qa: 10
+  memory_rerank: 120
+  static_summary: 500
+
 # NEW: Advanced context modes
 context_mode: "enhanced"  # basic | enhanced | global
 consistency_tracking:

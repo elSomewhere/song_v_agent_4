@@ -118,7 +118,7 @@ Return as JSON matching this structure:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=1000
+            max_tokens=state.config.get("api_max_tokens", {}).get("planner", 1000)
         )
         
         content = response.choices[0].message.content

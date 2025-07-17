@@ -929,7 +929,7 @@ This data powers the enhanced context system for improved consistency across lon
                 model=model,
                 messages=messages,
                 temperature=0.0,
-                max_tokens=120,
+                max_tokens=self.state.config.get("api_max_tokens", {}).get("memory_rerank", 120),
             )
 
             parsed = parse_json_response(resp.choices[0].message.content)

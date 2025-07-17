@@ -13,3 +13,13 @@ global_context_enabled: true
 global_ctx_weight: 0.5
 global_ctx_window: 50
 token_cap: 6000
+
+# API Response Token Limits - GLOBAL ENHANCED
+api_max_tokens:
+  planner: 1800              # Higher for global-level planning
+  reviewer: 2500             # Higher for global-level reviews
+  variation_mgr: 2200        # Higher for better variations
+  vision_qa: 1800            # Higher for detailed QA
+  fast_qa: 10                # Keep low for 5-token responses
+  memory_rerank: 180         # Higher for better reranking
+  static_summary: 700        # Higher for better summaries

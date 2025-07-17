@@ -129,7 +129,7 @@ def _render_single_variation(
                 model=model,
                 prompt=full_prompt,
                 size="1024x1024",
-                quality="medium",
+                quality=config.get("image_quality", "medium"),
                 output_format="png"
             )
             

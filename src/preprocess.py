@@ -119,7 +119,7 @@ class ScriptPreprocessor:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=self.state.config.get("preprocess", {}).get("script_parsing_max_tokens", 2000)
             )
             
             content = response.choices[0].message.content
@@ -296,7 +296,7 @@ Example: ["Helena", "Joy", "Silicate infantry"]
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=150
+                max_tokens=self.state.config.get("preprocess", {}).get("entity_extraction_max_tokens", 200)
             )
             
             content = response.choices[0].message.content.strip()
@@ -474,7 +474,7 @@ Return as JSON."""
                     }
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=self.state.config.get("preprocess", {}).get("ref_tagging_max_tokens", 600)
             )
             
             content = response.choices[0].message.content
@@ -554,9 +554,14 @@ class EntitiesPreprocessor:
     def parse_entities(self, entities_markdown: str) -> Dict[str, Any]:
         """Return a mapping of entity_name -> {description: str, features: str | None}."""
 
-        # Token limit (approx chars)
-        max_tokens = self.state.config.get("preprocess", {}).get("max_tokens_refs", 2000)
+        # Token limit for entity processing (much larger than refs)
+        max_tokens = self.state.config.get("preprocess", {}).get("max_tokens_entities", 8000)  # Much larger default
         char_budget = max_tokens * 4  # rough 4 chars per token
+        
+        # Ensure we can process the full entities file
+        if len(entities_markdown) > char_budget:
+            print(f"[EntitiesPreprocessor] Warning: entities.md ({len(entities_markdown)} chars) exceeds budget ({char_budget} chars), will be truncated")
+        
         prompt = (
             "You are a knowledgeable storyboard assistant. "
             "Extract EVERY entity (characters, props, environments) that has a heading or bullet list in the following design document. "
@@ -582,7 +587,7 @@ class EntitiesPreprocessor:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.0,
-                max_tokens=1500,
+                max_tokens=self.state.config.get("preprocess", {}).get("entity_processing_max_tokens", 3000),
             )
 
             content = response.choices[0].message.content
@@ -671,7 +676,7 @@ class EntitiesEnricher:
                     {"role": "user", "content": full_prompt},
                 ],
                 temperature=0.2,
-                max_tokens=1200,
+                max_tokens=self.state.config.get("preprocess", {}).get("entity_enrichment_max_tokens", 1500),
             )
 
             merged = parse_json_response(resp.choices[0].message.content)

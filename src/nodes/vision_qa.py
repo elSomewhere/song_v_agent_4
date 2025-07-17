@@ -158,7 +158,7 @@ Return detailed JSON:
             model=model,
             messages=messages,
             temperature=0.2,
-            max_tokens=1000
+            max_tokens=state.config.get("api_max_tokens", {}).get("vision_qa", 1000)
         )
         
         content = response.choices[0].message.content

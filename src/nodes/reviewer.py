@@ -115,7 +115,7 @@ def reviewer_node(state: WorkflowState) -> WorkflowState:
             model=model,
             messages=messages,
             temperature=0.3,
-            max_tokens=1500
+            max_tokens=state.config.get("api_max_tokens", {}).get("reviewer", 1500)
         )
         
         content = response.choices[0].message.content

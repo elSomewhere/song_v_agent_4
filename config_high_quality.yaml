@@ -1,0 +1,97 @@
+################################
+# HIGH QUALITY CONFIGURATION
+# Optimized for maximum fidelity and best image generation
+# Higher cost but superior results
+################################
+
+# Token limits - INCREASED for better quality
+token_cap: 8000                    # 2x default for richer prompts
+
+# API Response Token Limits - INCREASED for quality
+api_max_tokens:
+  planner: 2000                    # 2x default for detailed plans  
+  reviewer: 3000                   # 2x default for detailed reviews
+  variation_mgr: 2500              # Higher for multiple variations
+  vision_qa: 2000                  # Higher for detailed QA analysis
+  fast_qa: 10                      # Keep low for 5-token responses
+  memory_rerank: 150               # Slight increase for reranking
+  static_summary: 800              # Higher for better summaries
+
+# Enhanced context windows for maximum consistency
+ctx_images: 10                    # More reference images per shot
+ctx_window: 15                    # Larger local context window
+global_context_enabled: true     # Enable global consistency tracking
+global_ctx_window: 50             # Look back across many more scenes
+global_ctx_weight: 0.4            # Higher weight for global context
+character_consistency_window: 100 # Track character consistency across 100 scenes
+environment_consistency_window: 80 # Track environment consistency across 80 scenes
+
+# Advanced context mode for maximum quality
+context_mode: "enhanced"          # Use enhanced context processing
+consistency_tracking:
+  characters: true               # Track character visual consistency
+  environments: true             # Track environment continuity
+  style_elements: true           # Track artistic style consistency
+  narrative_flow: true           # Track story progression
+
+################################
+# Image generation quality - MAXIMUM
+################################
+image_quality: "high"            # Use highest quality for gpt-image-1
+image_size: "1024x1024"          # High resolution
+variations_per_shot: 5           # More variations to choose from
+n_variations: 5
+
+################################
+# Model selection - PREMIUM MODELS
+################################
+models:
+  embedding_text: text-embedding-3-large    # Highest quality embeddings
+  planner: gpt-4o                           # Best planning model
+  reviewer: gpt-4o                          # Best review model  
+  variation_mgr: gpt-4o                     # Best variation generation
+  renderer_new: gpt-image-1                 # Best image generation
+  renderer_edit: gpt-image-1
+  fast_qa: gpt-4o                           # Upgraded from gpt-4o-vision-preview
+  vision_qa: gpt-4o                         # Upgraded for better analysis
+  ref_tagger: gpt-4o                        # Best reference tagging
+  script_parser: gpt-4o                     # Best script parsing
+  entities_parser: gpt-4o                   # Best entity extraction
+  reranker_text: gpt-4o                     # Upgraded from mini for better results
+
+################################
+# Quality control - STRICT
+################################
+max_retries: 4                   # More retries for quality
+max_edit_retries: 3              # More edit attempts
+tag_confidence_threshold: 0.70   # Higher confidence threshold
+
+################################
+# Processing settings
+################################
+shots_per_scene: 1               # Can increase to 2-3 for more detailed scenes
+
+################################
+# Budget - INCREASED for quality
+################################
+budget_usd: 150                  # Higher budget for quality processing
+
+################################
+# Preprocessing - DETAILED
+################################
+preprocess:
+  script: auto                   # AI-powered script parsing
+  refs: auto                     # AI-powered reference processing
+  entities: auto                 # AI-powered entity extraction
+  max_tokens_script: 6000        # Detailed script parsing
+  max_tokens_refs: 4000          # Detailed reference processing
+  max_tokens_entities: 12000     # MUCH LARGER for entity processing (3x default)
+  # API Response Limits for Preprocessing - INCREASED
+  script_parsing_max_tokens: 4000   # 2x default
+  entity_extraction_max_tokens: 500 # Much higher than 150!
+  ref_tagging_max_tokens: 800       # Higher than 500
+  entity_enrichment_max_tokens: 2500 # Much higher than 1200
+  
+  tag_confidence_threshold: 0.50
+  refs_use_dir_names: false      # Disable for cleaner processing
+  refs_use_file_names: false 

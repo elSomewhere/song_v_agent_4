@@ -98,7 +98,7 @@ Return JSON array of {count} variations, each with:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.8,
-            max_tokens=1500
+            max_tokens=state.config.get("api_max_tokens", {}).get("variation_mgr", 1500)
         )
         
         content = response.choices[0].message.content

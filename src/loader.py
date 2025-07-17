@@ -257,7 +257,7 @@ class Loader:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
-                max_tokens=500,
+                max_tokens=config.get("api_max_tokens", {}).get("static_summary", 500),
             )
 
             summary_text = resp.choices[0].message.content.strip()

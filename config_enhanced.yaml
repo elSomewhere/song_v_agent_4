@@ -4,6 +4,16 @@ ctx_images: 6
 ctx_window: 8
 token_cap: 4000
 
+# API Response Token Limits - ENHANCED
+api_max_tokens:
+  planner: 1500              # Higher for enhanced planning
+  reviewer: 2000             # Higher for enhanced reviews  
+  variation_mgr: 2000        # Higher for better variations
+  vision_qa: 1500            # Higher for detailed QA
+  fast_qa: 10                # Keep low for 5-token responses
+  memory_rerank: 150         # Higher for better reranking
+  static_summary: 600        # Higher for better summaries
+
 # Enhanced context parameters
 context_mode: enhanced
 global_context_enabled: true

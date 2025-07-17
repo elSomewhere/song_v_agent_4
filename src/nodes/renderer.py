@@ -166,7 +166,7 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
                     image=open(temp_files[0], 'rb'),  # Primary reference image
                     prompt=full_prompt,
                     size="1024x1024",
-                    quality="medium"
+                    quality=state.config.get("image_quality", "medium")
                 )
                 
                 image_b64 = response.data[0].b64_json
@@ -189,7 +189,7 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
                 model=model,
                 prompt=full_prompt,
                 size="1024x1024",
-                quality="medium",
+                quality=state.config.get("image_quality", "medium"),
                 output_format="png"
             )
             
@@ -253,7 +253,7 @@ def _render_edit(client: Any, state: WorkflowState, variation: Any,
                 image=open(temp_files[0], 'rb'),
                 prompt=edit_instruction,
                 size="1024x1024",
-                quality="medium"
+                quality=state.config.get("image_quality", "medium")
             )
             
             image_b64 = response.data[0].b64_json

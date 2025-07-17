@@ -4,6 +4,17 @@ DEFAULT_CONFIG = {
     "ctx_window": 4,
     "token_cap": 4000,
     
+    # API Response Token Limits (configurable instead of hardcoded)
+    "api_max_tokens": {
+        "planner": 1000,
+        "reviewer": 1500, 
+        "variation_mgr": 1500,
+        "vision_qa": 1000,
+        "fast_qa": 10,
+        "memory_rerank": 120,
+        "static_summary": 500,
+    },
+    
     # Embedding configuration
     "embedding_dimension": 1536,  # Configurable embedding dimension
 
@@ -29,6 +40,14 @@ DEFAULT_CONFIG = {
         "entities": "auto",
         "max_tokens_script": 4000,
         "max_tokens_refs": 4000,
+        "max_tokens_entities": 8000,  # Dedicated budget for entity processing
+        
+        # API Response Limits for Preprocessing
+        "script_parsing_max_tokens": 2000,
+        "entity_extraction_max_tokens": 200,  # Increased from 150
+        "ref_tagging_max_tokens": 600,        # Increased from 500  
+        "entity_enrichment_max_tokens": 1500, # Increased from 1200
+        
         "tag_confidence_threshold": 0.50,
         "refs_use_dir_names": False,  # Changed to False per review recommendation
         "refs_use_file_names": False,
