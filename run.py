@@ -31,6 +31,7 @@ from src.nodes.memory_update import memory_update_node
 from src.nodes.workflow_controller import workflow_controller_node
 from src.nodes.prompt_saver import prompt_saver_node
 from src.nodes.midjourney_converter import midjourney_converter_node
+from src.nodes.midjourney_converter_enhanced import enhanced_midjourney_converter_node
 
 
 def preprocess_script_node(state: WorkflowState) -> WorkflowState:
@@ -155,7 +156,11 @@ def should_convert_or_update(state: WorkflowState) -> str:
     """Conditional edge after prompt_saver to midjourney converter or memory update."""
     render_engine = state.config.get("render_engine", "openai")
     if render_engine == "midjourney":
-        return "midjourney_converter"
+        midjourney_mode = state.config.get("midjourney_mode", "enhanced")
+        if midjourney_mode == "enhanced":
+            return "midjourney_converter_enhanced"
+        else:
+            return "midjourney_converter"
     else:
         return "memory_update"
 
@@ -227,6 +232,7 @@ def build_workflow() -> StateGraph:
         ("renderer", renderer_node),
         ("prompt_saver", prompt_saver_node),  # New: for midjourney mode
         ("midjourney_converter", midjourney_converter_node),  # New: for midjourney mode
+        ("midjourney_converter_enhanced", enhanced_midjourney_converter_node),  # New: enhanced midjourney mode
         ("fast_qa", fast_qa_node),
         ("vision_qa", vision_qa_node),
         ("policy", policy_node),
@@ -248,9 +254,10 @@ def build_workflow() -> StateGraph:
     graph.add_edge("vision_qa", "policy")
     graph.add_conditional_edges("policy", should_retry_or_update)
     
-    # Midjourney workflow path (new)
-    graph.add_edge("prompt_saver", "midjourney_converter")
+    # Midjourney workflow paths (new)
+    graph.add_conditional_edges("prompt_saver", should_convert_or_update)
     graph.add_edge("midjourney_converter", "workflow_controller")
+    graph.add_edge("midjourney_converter_enhanced", "workflow_controller")
     
     # Memory update continues to workflow controller
     graph.add_conditional_edges("memory_update", should_continue_workflow)
@@ -353,6 +360,7 @@ def main():
     parser.add_argument("--aspect-ratio", choices=["square", "landscape", "portrait", "auto"], default="square", 
                        help="Aspect ratio for generated images (square=1024x1024, landscape=1536x1024, portrait=1024x1536, auto=model chooses)")
     parser.add_argument("--renderer", choices=["openai", "midjourney"], help="Render engine: openai for image generation, midjourney for prompt optimization")
+    parser.add_argument("--midjourney-mode", choices=["basic", "enhanced"], help="Midjourney conversion mode: basic (convert raw prompts) or enhanced (direct from memory context)")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     
     args = parser.parse_args()
@@ -381,6 +389,7 @@ def main():
         "style_embedding_enabled": args.enable_style_embedding,
         "aspect_ratio": args.aspect_ratio,
         "render_engine": args.renderer or "openai",  # Override render engine if specified
+        "midjourney_mode": getattr(args, 'midjourney_mode', None) or "enhanced",  # Override midjourney mode if specified
         "preprocess": {
             "script": "auto" if args.ai_preprocess_script else "heuristic",
             "refs": "auto" if args.ai_preprocess_refs else "skip",

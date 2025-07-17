@@ -74,17 +74,31 @@ python run.py --script path/to/script.md \
 Use `--renderer midjourney` to generate Midjourney-optimized prompts instead of images:
 
 ```bash
-python run.py --renderer midjourney \
+# Enhanced mode (recommended): Direct from memory context
+python run.py --renderer midjourney --midjourney-mode enhanced \
               --ai-preprocess-script --ai-preprocess-refs --ai-preprocess-entities \
-              --config config_enhanced.yaml
+              --config config_high_quality.yaml
+
+# Basic mode: Convert raw prompts
+python run.py --renderer midjourney --midjourney-mode basic \
+              --ai-preprocess-script --ai-preprocess-refs --ai-preprocess-entities
 ```
 
-This mode:
-- Preserves all AI preprocessing (script parsing, entity extraction, reference analysis)
-- Generates contextual prompts in `./prompts/` folder
-- Converts them to Midjourney v6 optimized prompts in `./prompts_midjourney/` folder
-- Skips expensive image generation, reducing costs by ~75%
-- Maintains all visual context and consistency intelligence
+**Enhanced Mode Benefits:**
+- Creates prompts directly from rich memory context (reference images, character consistency, frame continuity)
+- Leverages all 5+ reference image sources with AI-generated tags
+- Uses canonical character descriptions for consistency
+- Incorporates visual continuity from previous frames
+- Results in richer, more contextually-aware Midjourney prompts
+
+**Basic Mode:**
+- Converts standard contextual prompts to Midjourney format
+- Simpler but potentially less optimal results
+
+Both modes:
+- Preserve all AI preprocessing (script parsing, entity extraction, reference analysis)
+- Skip expensive image generation, reducing costs by ~75%
+- Maintain visual context and consistency intelligence
 
 ### Input File Formats
 
@@ -137,7 +151,8 @@ output/
 └── run_20240115_143022/
     ├── frames/           # Generated storyboard frames (OpenAI mode)
     ├── prompts/          # Raw contextual prompts (all modes)
-    ├── prompts_midjourney/  # Midjourney-optimized prompts (Midjourney mode)
+    ├── prompts_midjourney/  # Basic Midjourney prompts (basic mode)
+    ├── prompts_midjourney_enhanced/  # Enhanced Midjourney prompts (enhanced mode)
     ├── variations/       # Alternative camera angles
     ├── memory/          # LanceDB vector storage
     ├── logs.jsonl       # Detailed execution logs

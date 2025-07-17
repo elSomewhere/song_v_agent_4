@@ -8,14 +8,20 @@ from src.utils import (
 )
 
 MJ_SYSTEM = (
-    "You are an expert Midjourney prompt engineer (version 6, style tuning α). "
-    "Rewrite the input so that it works optimally in Midjourney: "
-    " • keep key subject words and style notes\n"
-    " • compress long prose to short, evocative phrases separated by commas\n"
-    " • append valid MJ parameters (e.g. --ar, --stylize, --quality) derived "
-    "   from shot metadata\n"
-    " • move negative content behind `--no`\n"
-    " • never include markdown fences or JSON – return *one* plain‑text prompt."
+    "You are an expert Midjourney v6 prompt engineer with deep knowledge of visual storytelling. "
+    "Transform the input into a rich, detailed Midjourney prompt that maximizes visual impact. "
+    "CREATE DETAILED PROMPTS (60-100 words) with:\n"
+    " • Specific subject details: character appearance, clothing, poses, expressions\n"
+    " • Rich environmental context: lighting, atmosphere, weather, time of day\n"
+    " • Camera and composition: shot type, angle, depth of field, focal length\n"
+    " • Artistic style: photorealistic, cinematic, artistic movement references\n"
+    " • Color palette and mood: specific colors, contrast, saturation\n"
+    " • Technical quality markers: 8k, HDR, sharp focus, professional photography\n"
+    " • Surface textures and materials: fabric, metal, skin, architectural elements\n"
+    " • Use comma-separated descriptive phrases for maximum impact\n"
+    " • End with appropriate MJ parameters (--ar, --stylize, --v 6)\n"
+    " • Include --no for negative elements when relevant\n"
+    "OUTPUT: Single comprehensive midjourney prompt, no markdown formatting."
 )
 
 
@@ -63,7 +69,21 @@ def midjourney_converter_node(state: WorkflowState) -> WorkflowState:
 
     # Build conversion prompt
     suffix = _derive_mj_suffix(state, current_variation)
-    user_msg = f"{raw_prompt}\n\n---\nAdd appropriate Midjourney parameters. End with `{suffix}`."
+    user_msg = f"""TRANSFORM INTO DETAILED MIDJOURNEY PROMPT:
+
+{raw_prompt}
+
+CREATE a comprehensive 60-100 word Midjourney prompt that includes:
+• Rich character/subject details (appearance, clothing, pose, expression)
+• Detailed environment (lighting, atmosphere, setting, weather) 
+• Camera work (shot type, angle, composition, depth of field)
+• Artistic style (photorealistic, cinematic, art movement references)
+• Color palette and mood descriptors
+• Technical quality terms (8k, HDR, sharp focus, professional)
+• Surface textures and materials
+• Comma-separated descriptive phrases
+
+End with: `{suffix}`"""
 
     try:
         model = state.config["models"].get("midjourney_converter", "gpt-4o")
@@ -75,7 +95,7 @@ def midjourney_converter_node(state: WorkflowState) -> WorkflowState:
                 {"role": "user", "content": user_msg}
             ],
             temperature=0.4,
-            max_tokens=400
+            max_tokens=800  # Increased for longer, more detailed prompts
         )
         
         mj_prompt = response.choices[0].message.content.strip()

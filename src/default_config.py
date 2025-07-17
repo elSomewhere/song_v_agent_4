@@ -62,6 +62,9 @@ DEFAULT_CONFIG = {
 
     # Render engine selection
     "render_engine": "openai",  # values: "openai" | "midjourney"
+    
+    # Midjourney conversion mode
+    "midjourney_mode": "enhanced",  # values: "basic" | "enhanced"
 
     # Explicit model map (do NOT swap)
     "models": {
