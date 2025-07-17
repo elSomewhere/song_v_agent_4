@@ -142,6 +142,24 @@ class Loader:
             config = self._deep_merge_configs(config, config_overrides)
         
         # ------------------------------------------------------------------
+        # Process entities if dict is empty (backup EntitiesPreprocessor)
+        # ------------------------------------------------------------------
+        entities_dict = inputs["entities_dict"]
+        if not entities_dict and config.get("preprocess", {}).get("entities") == "auto":
+            from src.preprocess import EntitiesPreprocessor
+            # Create a temporary state for preprocessing
+            temp_state = WorkflowState(
+                script_path=script_path,
+                style_path=style_path, 
+                entities_path=entities_path,
+                refs_dir=refs_dir,
+                output_dir="temp",  # Will be replaced
+                config=config
+            )
+            preprocessor = EntitiesPreprocessor(temp_state)
+            entities_dict = preprocessor.parse_entities(inputs["entities"])
+        
+        # ------------------------------------------------------------------
         # Create static summary of script, entities, style (once per run)
         # ------------------------------------------------------------------
         static_summary = self._generate_static_summary(
@@ -159,7 +177,7 @@ class Loader:
             refs_dir=refs_dir,
             output_dir=output_dir,
             style_text=inputs["style"],
-            entities_dict=inputs["entities_dict"],
+            entities_dict=entities_dict,
             config=config,
             budget_usd=config.get("budget_usd", 35.0),
             n_variations=config.get("n_variations", 3),
@@ -244,9 +262,17 @@ class Loader:
 
             summary_text = resp.choices[0].message.content.strip()
 
-            # Track cost roughly – assume resp.usage possibly missing on small model
-            tokens_in = 500  # approx
-            cost = calculate_cost(model, tokens_in, 0)
+            # Track cost properly using actual usage if available
+            if hasattr(resp, 'usage') and resp.usage:
+                tokens_in = resp.usage.prompt_tokens
+                tokens_out = resp.usage.completion_tokens
+                cost = calculate_cost(model, tokens_in, tokens_out)
+            else:
+                # Fallback to approximation based on actual prompt length
+                from src.utils import count_tokens_approx
+                tokens_in = count_tokens_approx(prompt)
+                cost = calculate_cost(model, tokens_in, 0)
+            
             # Cannot log yet (state not created), so just print.
             print(f"[Loader] Static summary generated (~{len(summary_text.split())} words, cost ≈ ${cost:.4f})")
 

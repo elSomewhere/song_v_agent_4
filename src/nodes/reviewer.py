@@ -239,9 +239,14 @@ def _build_reviewer_prompt(state: WorkflowState, plan: ScenePlan,
     if nearby_frames:
         frame_summaries = []
         for frame in nearby_frames[:3]:
-            summary = f"- Scene {frame['scene_id']} Shot {frame['shot_id']}: {frame['prompt'][:150]}..."
-            frame_summaries.append(summary)
-        frames_context = "\n".join(frame_summaries)
+            # Skip None frames to avoid TypeError
+            if frame is not None and isinstance(frame, dict):
+                scene_id = frame.get('scene_id', '?')
+                shot_id = frame.get('shot_id', '?')
+                prompt = frame.get('prompt', '')[:150] if frame.get('prompt') else ''
+                summary = f"- Scene {scene_id} Shot {shot_id}: {prompt}..."
+                frame_summaries.append(summary)
+        frames_context = "\n".join(frame_summaries) if frame_summaries else "No valid frames"
     
     # Build canonical entity descriptions for entities in this shot
     canon_lines = []

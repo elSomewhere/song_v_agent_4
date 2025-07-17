@@ -18,10 +18,18 @@ class MetricsCollector:
         self.stage_latencies = defaultdict(list)
         self.error_counts = defaultdict(int)
         
+    def _get_state_attr(self, attr_name: str, default=None):
+        """Helper method to get state attribute, handling both WorkflowState and AddableValuesDict."""
+        if hasattr(self.state, attr_name):
+            return getattr(self.state, attr_name, default)
+        else:
+            return self.state.get(attr_name, default)
+    
     def collect_from_logs(self) -> Metrics:
         """Aggregate metrics from workflow logs."""
         # Process logs
-        for log in self.state.logs:
+        logs = self._get_state_attr('logs', [])
+        for log in logs:
             # Count model usage
             if log.get("model"):
                 self.model_usage[log["model"]] += 1
@@ -34,54 +42,53 @@ class MetricsCollector:
             if log.get("status") == "error":
                 self.error_counts[log["stage"]] += 1
         
-        # Calculate aggregates
+        # Calculate derived metrics
+        start_time = self._get_state_attr('start_time')
         end_time = datetime.now()
-        elapsed = (end_time - self.state.start_time).total_seconds()
+        elapsed = (end_time - start_time).total_seconds() if start_time else 0
         
-        # Count outcomes
-        frames_accepted = len(self.state.accepted_frames)
-        frames_rejected = sum(1 for log in self.state.logs 
-                             if log.get("stage") == "policy" 
-                             and log.get("status") == "give_up")
-        retry_attempts = sum(1 for log in self.state.logs 
-                            if log.get("stage") == "policy" 
-                            and log.get("status") == "retry_new")
-        edit_attempts = sum(1 for log in self.state.logs 
-                           if log.get("stage") == "policy" 
-                           and log.get("status") == "retry_edit")
+        # Frame statistics
+        accepted_frames = self._get_state_attr('accepted_frames', [])
+        frames_accepted = len(accepted_frames)
+        frames_rejected = sum(1 for log in logs
+                            if log.get("stage") == "reviewer" and log.get("status") == "rejected")
+        
+        # Quality control metrics
+        retry_attempts = sum(1 for log in logs
+                           if log.get("stage") == "retry")
+        
+        edit_attempts = sum(1 for log in logs
+                          if log.get("stage") == "edit")
+        
+        accept_rate = frames_accepted / max(1, frames_accepted + frames_rejected)
         
         # Count variations
-        variations_created = sum(1 for log in self.state.logs 
-                               if log.get("stage") == "variation_mgr"
-                               and log.get("status") == "success")
-        
-        # Calculate accept rate
-        total_decisions = frames_accepted + frames_rejected
-        accept_rate = frames_accepted / max(1, total_decisions)
-        
-        # Collect errors
-        errors = []
-        for stage, count in self.error_counts.items():
-            errors.append(f"{stage}: {count} errors")
+        variations_created = sum(1 for log in logs
+                               if log.get("stage") == "renderer" and log.get("status") == "success")
         
         # Build metrics object
         metrics = Metrics(
-            run_id=self.state.trace_id,
-            start_time=self.state.start_time,
+            # Basic run info
+            run_id=self._get_state_attr('trace_id', ''),
+            start_time=start_time or datetime.now(),
             end_time=end_time,
             elapsed_s=elapsed,
-            total_tokens=self.state.total_tokens,
-            total_cost_usd=self.state.total_cost,
-            scenes_processed=self.state.current_scene_idx,
-            shots_generated=len(self.state.accepted_frames),
+            
+            # Token and cost tracking
+            total_tokens=self._get_state_attr('total_tokens', 0),
+            total_cost_usd=self._get_state_attr('total_cost', 0.0),
+            scenes_processed=self._get_state_attr('current_scene_idx', 0),
+            shots_generated=len(accepted_frames),
             variations_created=variations_created,
             frames_accepted=frames_accepted,
             frames_rejected=frames_rejected,
+            accept_rate=accept_rate,
             retry_attempts=retry_attempts,
             edit_attempts=edit_attempts,
-            accept_rate=accept_rate,
+            
+            # Model usage and performance
             models_used=dict(self.model_usage),
-            errors=errors
+            errors=[]  # Initialize empty errors list
         )
         
         return metrics
@@ -89,7 +96,11 @@ class MetricsCollector:
     def save_metrics(self, output_dir: Optional[Path] = None) -> Path:
         """Save metrics to JSON file."""
         if output_dir is None:
-            output_dir = Path(self.state.output_dir)
+            # Handle both WorkflowState objects and AddableValuesDict from LangGraph
+            if hasattr(self.state, 'output_dir'):
+                output_dir = Path(self.state.output_dir)
+            else:
+                output_dir = Path(self.state["output_dir"])
         
         metrics = self.collect_from_logs()
         metrics_path = output_dir / "metrics.json"
@@ -172,9 +183,45 @@ class MetricsCollector:
             
             # Budget utilization
             f.write("\n### Budget Utilization\n")
-            f.write(f"- Budget: ${self.state.budget_usd}\n")
+            budget_usd = self._get_state_attr('budget_usd', 35.0)
+            f.write(f"- Budget: ${budget_usd}\n")
             f.write(f"- Spent: ${metrics.total_cost_usd:.2f}\n")
-            f.write(f"- Utilization: {(metrics.total_cost_usd / self.state.budget_usd * 100):.1f}%\n")
+            f.write(f"- Utilization: {(metrics.total_cost_usd / budget_usd * 100):.1f}%\n")
+
+    def export_text_report(self, output_dir: Path) -> Path:
+        """Export a formatted text report."""
+        metrics = self.collect_from_logs()
+        report_path = output_dir / "run_report.txt"
+        
+        with open(report_path, 'w') as f:
+            f.write("# VC-RAG-SBG Run Report\n\n")
+            f.write(f"**Run ID:** {metrics.run_id}\n")
+            f.write(f"**Duration:** {metrics.elapsed_s:.1f} seconds\n")
+            f.write(f"**Total Cost:** ${metrics.total_cost_usd:.2f}\n")
+            f.write(f"**Total Tokens:** {metrics.total_tokens:,}\n\n")
+            
+            f.write("## Generation Stats\n")
+            f.write(f"- Scenes Processed: {metrics.scenes_processed}\n")
+            f.write(f"- Shots Generated: {metrics.shots_generated}\n")
+            f.write(f"- Variations Created: {metrics.variations_created}\n")
+            f.write(f"- Frames Accepted: {metrics.frames_accepted}\n")
+            f.write(f"- Accept Rate: {metrics.accept_rate:.1%}\n\n")
+            
+            f.write("## Quality Control\n")
+            f.write(f"- Retry Attempts: {metrics.retry_attempts}\n")
+            f.write(f"- Edit Attempts: {metrics.edit_attempts}\n")
+            f.write(f"- Frames Rejected: {metrics.frames_rejected}\n\n")
+            
+            f.write("## Model Usage\n")
+            for model, count in metrics.models_used.items():
+                f.write(f"- {model}: {count} calls\n")
+            f.write("\n")
+            
+            f.write("## Output Location\n")
+            output_dir_str = self._get_state_attr('output_dir', str(output_dir))
+            f.write(f"{output_dir_str}\n\n")
+        
+        return report_path
 
 
 def create_metrics_collector(state: WorkflowState) -> MetricsCollector:

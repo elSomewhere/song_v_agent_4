@@ -183,9 +183,14 @@ def _build_planner_context(state: WorkflowState, current_scene: Any,
     if nearby_frames:
         frame_summaries = []
         for frame in nearby_frames[:3]:  # Limit to 3 most recent
-            summary = f"Scene {frame['scene_id']} Shot {frame.get('shot_id', '?')}: {frame.get('prompt', '')[:100]}..."
-            frame_summaries.append(summary)
-        context["frames_summary"] = "\n".join(frame_summaries)
+            # Skip None frames to avoid TypeError
+            if frame is not None and isinstance(frame, dict):
+                scene_id = frame.get('scene_id', '?')
+                shot_id = frame.get('shot_id', '?')
+                prompt = frame.get('prompt', '')[:100] if frame.get('prompt') else ''
+                summary = f"Scene {scene_id} Shot {shot_id}: {prompt}..."
+                frame_summaries.append(summary)
+        context["frames_summary"] = "\n".join(frame_summaries) if frame_summaries else "No valid frames"
     else:
         context["frames_summary"] = "No previous frames"
     
@@ -193,9 +198,11 @@ def _build_planner_context(state: WorkflowState, current_scene: Any,
     if relevant_refs:
         ref_summaries = []
         for ref in relevant_refs[:3]:  # Limit to 3 most relevant
-            tags = ", ".join(ref['tags'][:5])
-            summary = f"{ref['entity']} ({ref['category']}): {tags}"
-            ref_summaries.append(summary)
+            # Skip None refs to avoid TypeError
+            if ref is not None:
+                tags = ", ".join(ref.get('tags', [])[:5])
+                summary = f"{ref.get('entity', 'Unknown')} ({ref.get('category', 'Unknown')}): {tags}"
+                ref_summaries.append(summary)
         context["refs_summary"] = "\n".join(ref_summaries)
     else:
         context["refs_summary"] = "No reference images"

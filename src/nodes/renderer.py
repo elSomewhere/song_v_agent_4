@@ -128,92 +128,57 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
 
 def _render_new(client: Any, state: WorkflowState, variation: Any,
                ref_images: List[Dict]) -> Dict[str, Any]:
-    """Generate a new image using gpt-image-1 via Responses API."""
+    """Generate a new image using gpt-image-1 via proper Image API."""
     
     # Build the full prompt
     full_prompt = _build_image_prompt(state, variation)
     
     model = state.config["models"]["renderer_new"]
     
-    # Use Responses API for gpt-image-1 with reference images
-    if ref_images and model == "gpt-image-1":
-        print(f"[Renderer] Using Responses API with {len(ref_images)} reference images")
+    if model == "gpt-image-1":
+        print(f"[Renderer] Using Image API for gpt-image-1")
         
-        # Build input content with text and reference images
-        input_content = [
-            {"type": "input_text", "text": full_prompt}
-        ]
-        
-        # Add reference images (up to 4)
-        for ref in ref_images[:4]:
-            if ref.get("base64"):
-                input_content.append({
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{ref['base64']}"
-                })
-        
-        print(f"[Renderer] Sending {len(input_content)-1} images to gpt-image-1 via Responses API")
-        
-        # Use standard chat completions API with image generation model
-        response = call_openai_with_retry(
-            client,
-            model=model,  # Use gpt-image-1 directly
-            messages=[{
-                "role": "user", 
-                "content": input_content
-            }],
-            max_tokens=1000
-        )
-        
-        # Extract image from standard response format
-        content = response.choices[0].message.content
-        
-        # For gpt-image-1, the content should contain the base64 image
-        # or we may need to extract it differently based on actual API
-        if content and "data:image" in content:
-            # Extract base64 from data URL
-            import re
-            match = re.search(r'data:image/[^;]+;base64,([^"]+)', content)
-            if match:
-                image_b64 = match.group(1)
-                cost = 0.08  # Approximate cost for gpt-image-1 with references
-            else:
-                raise Exception("No valid image data found in response")
-        else:
-            # Assume the entire content is base64 encoded image
-            image_b64 = content
-            cost = 0.08
+        # For gpt-image-1, we need to use the images.edit() API if we have reference images,
+        # or images.generate() if we don't have reference images
+        if ref_images:
+            print(f"[Renderer] Using images.edit() with {len(ref_images)} reference images")
             
-    elif model == "gpt-image-1":
-        print(f"[Renderer] Using Responses API without reference images")
-        
-        # Use standard chat completions API without reference images  
-        response = call_openai_with_retry(
-            client,
-            model=model,
-            messages=[{
-                "role": "user",
-                "content": [{"type": "text", "text": full_prompt}]
-            }],
-            max_tokens=1000
-        )
-        
-        # Extract image from standard response format
-        content = response.choices[0].message.content
-        
-        # For gpt-image-1, extract image data
-        if content and "data:image" in content:
-            import re
-            match = re.search(r'data:image/[^;]+;base64,([^"]+)', content)
-            if match:
-                image_b64 = match.group(1)
-                cost = 0.04  # Standard cost for gpt-image-1
-            else:
-                raise Exception("No valid image data found in response")
+            # Convert reference images to file-like objects
+            import io
+            import base64
+            ref_image_files = []
+            for ref in ref_images[:4]:  # Limit to 4 as per documentation
+                if ref.get("base64"):
+                    image_data = base64.b64decode(ref["base64"])
+                    image_file = io.BytesIO(image_data)
+                    ref_image_files.append(image_file)
+            
+            # Use images.edit() API for gpt-image-1 with reference images
+            response = call_openai_with_retry(
+                client,
+                model=model,
+                image=ref_image_files,
+                prompt=full_prompt,
+                size="1024x1024",
+                quality="medium"
+            )
+            
+            image_b64 = response.data[0].b64_json
+            cost = 0.08  # Approximate cost for gpt-image-1 with references
         else:
-            # Assume the entire content is base64 encoded image
-            image_b64 = content
-            cost = 0.04
+            print(f"[Renderer] Using images.generate() without reference images")
+            
+            # Use images.generate() API for gpt-image-1 without reference images
+            response = call_openai_with_retry(
+                client,
+                model=model,
+                prompt=full_prompt,
+                size="1024x1024",
+                quality="medium"
+            )
+            
+            image_b64 = response.data[0].b64_json
+            cost = 0.04  # Standard cost for gpt-image-1
     else:
         # Standard generation for other models (dall-e-3, etc.)
         response = call_openai_with_retry(
@@ -238,7 +203,7 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
 
 def _render_edit(client: Any, state: WorkflowState, variation: Any,
                 ref_images: List[Dict]) -> Dict[str, Any]:
-    """Edit an existing image using gpt-image-1 via Responses API."""
+    """Edit an existing image using gpt-image-1 via proper Image API."""
     
     model = state.config["models"]["renderer_edit"]
     
@@ -246,53 +211,41 @@ def _render_edit(client: Any, state: WorkflowState, variation: Any,
     edit_instruction = _build_edit_instruction(state, variation)
     
     if model == "gpt-image-1":
-        # Use Responses API for editing with gpt-image-1
-        input_content = [
-            {"type": "input_text", "text": edit_instruction}
-        ]
+        print(f"[Renderer] Using images.edit() API for gpt-image-1")
         
-        # Add current image to be edited as first input image
+        # Convert current image and reference images to file-like objects
+        import io
+        import base64
+        
+        image_files = []
+        
+        # Add current image to be edited as first image
         if state.current_image_b64:
-            input_content.append({
-                "type": "input_image",
-                "image_url": f"data:image/png;base64,{state.current_image_b64}"
-            })
+            current_image_data = base64.b64decode(state.current_image_b64)
+            current_image_file = io.BytesIO(current_image_data)
+            image_files.append(current_image_file)
         
         # Add reference images for context (up to 3 additional)
         for ref in ref_images[:3]:
             if ref.get("base64"):
-                input_content.append({
-                    "type": "input_image", 
-                    "image_url": f"data:image/png;base64,{ref['base64']}"
-                })
+                ref_image_data = base64.b64decode(ref["base64"])
+                ref_image_file = io.BytesIO(ref_image_data)
+                image_files.append(ref_image_file)
         
-        # Use standard chat completions API for editing
+        print(f"[Renderer] Editing with {len(image_files)} images")
+        
+        # Use images.edit() API for gpt-image-1
         response = call_openai_with_retry(
             client,
             model=model,
-            messages=[{
-                "role": "user",
-                "content": input_content
-            }],
-            max_tokens=1000
+            image=image_files,
+            prompt=edit_instruction,
+            size="1024x1024",
+            quality="medium"
         )
         
-        # Extract image from standard response format
-        content = response.choices[0].message.content
-        
-        # For gpt-image-1, extract image data
-        if content and "data:image" in content:
-            import re
-            match = re.search(r'data:image/[^;]+;base64,([^"]+)', content)
-            if match:
-                image_b64 = match.group(1)
-                cost = 0.04  # Approximate cost for gpt-image-1 edit
-            else:
-                raise Exception("No valid image data found in edit response")
-        else:
-            # Assume the entire content is base64 encoded image
-            image_b64 = content
-            cost = 0.04
+        image_b64 = response.data[0].b64_json
+        cost = 0.04  # Approximate cost for gpt-image-1 edit
     else:
         # Fallback for other models (though edit mainly uses gpt-image-1)
         # Convert current image to file-like object

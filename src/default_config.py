@@ -7,6 +7,10 @@ DEFAULT_CONFIG = {
     # Embedding configuration
     "embedding_dimension": 1536,  # Configurable embedding dimension
 
+    # --- Style‑aware retrieval -----------------------------------------
+    "style_embedding_enabled": False,       # master switch
+    "style_embedding_dimension": 1024,      # matches image-embed-1 dimension
+    
     # Variations
     "n_variations": 3,
     "variation_camera": "full",  # full | angle_only | composition_only
@@ -36,6 +40,7 @@ DEFAULT_CONFIG = {
     # Explicit model map (do NOT swap)
     "models": {
         "embedding_text": "text-embedding-3-large",
+        "embedding_style": "image-embed-1",  # Style embedding model
         "planner": "gpt-4o",
         "reviewer": "gpt-4o",
         "variation_mgr": "gpt-4o",
@@ -53,5 +58,6 @@ DEFAULT_CONFIG = {
     # Retrieval settings
     "retrieval": {
         "text_rerank_k": 10,
+        "style_weight": 0.45,  # Weight when fusing content vs style similarity (0-1)
     },
 } 

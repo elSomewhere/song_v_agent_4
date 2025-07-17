@@ -515,14 +515,16 @@ Return as JSON."""
         text = " ".join(tags)
         
         try:
-            # text-embedding-3-large supports dimensions parameter
+            # Only pass dimensions parameter for models that support it
             embedding_dim = self.state.config.get("embedding_dimension", 1536)
-            response = call_openai_with_retry(
-                self.client,
-                model=model,
-                input=text,
-                dimensions=embedding_dim  # Use configurable dimension
-            )
+            kwargs = {
+                "model": model,
+                "input": text
+            }
+            if model == "text-embedding-3-large" or model == "text-embedding-3-small":
+                kwargs["dimensions"] = embedding_dim
+                
+            response = call_openai_with_retry(self.client, **kwargs)
             
             embedding = response.data[0].embedding
             tokens = response.usage.total_tokens
@@ -652,7 +654,8 @@ class EntitiesEnricher:
 
         full_prompt = (
             "Merge the textual entity descriptions with the visual reference tags. "
-            "For each entity, produce a CONSOLIDATED JSON object with keys: description (text), visual_traits (comma list), canonical_colors (comma list if identifiable). "
+            "Return a JSON object where each entity name is a key, and each value is an object with keys: description (text), visual_traits (comma list), canonical_colors (comma list if identifiable). "
+            "Example format: {\"Adult Helena\": {\"description\": \"...\", \"visual_traits\": \"...\", \"canonical_colors\": \"...\"}, \"Joy\": {...}}. "
             "If there are conflicts, choose the version best supported by image tags. Return raw JSON only.\n\n" +
             "\n\n".join(prompt_blocks)
         )

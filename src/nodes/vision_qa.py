@@ -216,15 +216,23 @@ def _build_context_summary(nearby_frames: List[Dict], relevant_refs: List[Dict])
     parts = []
     
     if nearby_frames:
-        parts.append(f"Previous Frames: {len(nearby_frames)} frames from nearby scenes")
-        for frame in nearby_frames[:2]:
-            parts.append(f"  - Scene {frame['scene_id']} Shot {frame['shot_id']}: {frame['prompt'][:100]}...")
+        # Filter out None values from nearby_frames
+        valid_frames = [frame for frame in nearby_frames if frame is not None and isinstance(frame, dict)]
+        if valid_frames:
+            parts.append(f"Previous Frames: {len(valid_frames)} frames from nearby scenes")
+            for frame in valid_frames[:2]:
+                scene_id = frame.get('scene_id', 'unknown')
+                shot_id = frame.get('shot_id', 'unknown')
+                prompt = frame.get('prompt', 'No prompt available')
+                parts.append(f"  - Scene {scene_id} Shot {shot_id}: {prompt[:100]}...")
     
     if relevant_refs:
         parts.append(f"\nReference Images: {len(relevant_refs)} relevant references")
         for ref in relevant_refs[:3]:
-            tags = ", ".join(ref['tags'][:5])
-            parts.append(f"  - {ref['entity']}: {tags}")
+            if ref is not None and isinstance(ref, dict):
+                tags = ", ".join(ref.get('tags', [])[:5])
+                entity = ref.get('entity', 'unknown')
+                parts.append(f"  - {entity}: {tags}")
     
     return "\n".join(parts) if parts else "No visual context available"
 

@@ -16,6 +16,8 @@ from src.utils import (
     log_entry,
     COST_PER_1K_TOKENS,
     parse_json_response,
+    get_style_embedding,
+    load_image_as_base64,
 )
 
 
@@ -31,6 +33,7 @@ class MemoryService:
         
         # Configure embedding dimension from config
         self.embedding_dim = state.config.get("embedding_dimension", 1536)
+        self.style_embedding_dim = state.config.get("style_embedding_dimension", 1024)
         
         # Initialize LanceDB
         self.db = lancedb.connect(str(self.db_path))
@@ -74,7 +77,9 @@ class MemoryService:
             schema = pa.schema([
                 pa.field("frame_id", pa.string()),
                 pa.field("scene_id", pa.int32()),
+                pa.field("shot_id", pa.int32()),
                 pa.field("clip_embedding", pa.list_(pa.float32(), self.embedding_dim)),
+                pa.field("style_embedding", pa.list_(pa.float32(), self.style_embedding_dim)),
                 pa.field("thumb_path", pa.string()),
                 pa.field("original_path", pa.string()),
                 pa.field("trace_id", pa.string()),
@@ -82,11 +87,21 @@ class MemoryService:
                 pa.field("entity", pa.string()),
                 pa.field("tags", pa.list_(pa.string())),
                 pa.field("source", pa.string()),
-                pa.field("confidence", pa.float32())
+                pa.field("confidence", pa.float32()),
+                pa.field("prompt", pa.string())
             ])
             self.visual_ctx_table = self.db.create_table("visual_ctx", schema=schema)
         else:
             self.visual_ctx_table = self.db.open_table("visual_ctx")
+            # Check if new columns exist, add migration handling for missing fields
+            existing_fields = set(self.visual_ctx_table.schema.names)
+            required_fields = {"style_embedding", "shot_id", "prompt"}
+            missing_fields = required_fields - existing_fields
+            
+            if missing_fields:
+                log_entry(self.state, "memory_migration", "missing_fields_detected", 
+                         extra={"missing": list(missing_fields)})
+                # For LanceDB, we'll handle missing fields during insertion by providing defaults
         
         # failures table
         if "failures" not in self.db.table_names():
@@ -100,6 +115,26 @@ class MemoryService:
         else:
             self.failures_table = self.db.open_table("failures")
     
+    def _ensure_visual_ctx_fields(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure record has all required fields for visual_ctx table with defaults."""
+        # Get existing schema fields
+        existing_fields = set(self.visual_ctx_table.schema.names)
+        
+        # Add missing fields with appropriate defaults
+        defaults = {
+            "shot_id": -1,
+            "prompt": "",
+            "style_embedding": [0.0] * self.style_embedding_dim
+        }
+        
+        for field, default_value in defaults.items():
+            if field not in existing_fields:
+                continue  # Skip if table doesn't have this field yet
+            if field not in record:
+                record[field] = default_value
+                
+        return record
+    
     def index_references(self, ref_metas: List[RefMeta]) -> None:
         """Index reference images in visual_ctx table."""
         if not ref_metas:
@@ -108,21 +143,41 @@ class MemoryService:
         # Convert to records for LanceDB
         records = []
         for ref in ref_metas:
+            # Compute style embedding if enabled
+            style_embedding = None
+            if self.state.config.get("style_embedding_enabled", False):
+                try:
+                    # Load image as base64 for style embedding
+                    if ref.original_path and Path(ref.original_path).exists():
+                        image_b64 = load_image_as_base64(ref.original_path)
+                        style_embedding = get_style_embedding(image_b64, self.state.config, self.state)
+                    else:
+                        # Fallback to zero vector if image not available
+                        style_embedding = [0.0] * self.style_embedding_dim
+                except Exception as e:
+                    log_entry(self.state, "memory_index_refs", "style_embedding_error", 
+                             error=str(e), extra={"frame_id": ref.frame_id})
+                    style_embedding = [0.0] * self.style_embedding_dim
+            else:
+                style_embedding = [0.0] * self.style_embedding_dim
+            
             record = {
                 "frame_id": ref.frame_id,
                 "scene_id": -1,  # -1 for reference images
+                "shot_id": -1,  # -1 for reference images
                 "clip_embedding": ref.clip_embedding,
+                "style_embedding": style_embedding,
                 "thumb_path": ref.thumb_path,
+                "original_path": ref.original_path or "",
                 "trace_id": self.state.trace_id,
                 "category": ref.category,
                 "entity": ref.entity,
                 "tags": ref.tags,
                 "source": ref.source,
                 "confidence": float(ref.confidence),
-                "original_path": ref.original_path or "",
-                "prompt": "",
-                "shot_id": -1  # -1 for reference images
+                "prompt": ""
             }
+            record = self._ensure_visual_ctx_fields(record)
             records.append(record)
         
         # Add to table
@@ -148,22 +203,43 @@ class MemoryService:
         }
         self.episodic_text_table.add([episodic_record])
         
+        # Compute style embedding if enabled
+        style_embedding = None
+        if self.state.config.get("style_embedding_enabled", False):
+            try:
+                # Load image as base64 for style embedding
+                image_path = frame_data.get("image_path")
+                if image_path and Path(image_path).exists():
+                    image_b64 = load_image_as_base64(image_path)
+                    style_embedding = get_style_embedding(image_b64, self.state.config, self.state)
+                else:
+                    # Fallback to zero vector if image not available
+                    style_embedding = [0.0] * self.style_embedding_dim
+            except Exception as e:
+                log_entry(self.state, "memory_index_frame", "style_embedding_error", 
+                         error=str(e), extra={"frame_id": frame_data["frame_id"]})
+                style_embedding = [0.0] * self.style_embedding_dim
+        else:
+            style_embedding = [0.0] * self.style_embedding_dim
+        
         # Add to visual_ctx table
         visual_record = {
             "frame_id": frame_data["frame_id"],
             "scene_id": frame_data["scene_id"],
+            "shot_id": frame_data["shot_id"],
             "clip_embedding": embedding,  # Using text embedding as proxy
+            "style_embedding": style_embedding,
             "thumb_path": frame_data.get("thumb_path", ""),
+            "original_path": frame_data.get("image_path", ""),
             "trace_id": self.state.trace_id,
             "category": "generated",
             "entity": "generated_frame",
             "tags": frame_data.get("tags", []),
             "source": "generated",
             "confidence": float(frame_data.get("quality_score", 0.0)),
-            "prompt": frame_data["prompt"],
-            "shot_id": frame_data["shot_id"],
-            "original_path": frame_data.get("image_path", ""),
+            "prompt": frame_data["prompt"]
         }
+        visual_record = self._ensure_visual_ctx_fields(visual_record)
         self.visual_ctx_table.add([visual_record])
         
         log_entry(self.state, "memory_index_frame", "success",
@@ -183,7 +259,7 @@ class MemoryService:
         print(f"[Memory] hybrid_retrieve called with entities: {entities}")
 
         # ------------------------------------------------------------------
-        # Initial ANN search (no heavy hand-tuned heuristics)
+        # Initial ANN search with optional style embedding fusion
         # ------------------------------------------------------------------
         try:
             # Increase oversampling for better results, ensure minimum limit of 1
@@ -193,11 +269,33 @@ class MemoryService:
             txt_results = list(txt_hits.to_pandas().itertuples()) if txt_hits is not None else []
             img_results = list(img_hits.to_pandas().itertuples()) if img_hits is not None else []
             
-            print(f"[Memory] Initial search: {len(txt_results)} text hits, {len(img_results)} image hits")
+            print(f"[Memory] Initial content search: {len(txt_results)} text hits, {len(img_results)} image hits")
             
             # Filter image results to reference images only (scene_id = -1)
             img_results = [r for r in img_results if getattr(r, 'scene_id', 0) == -1]
             print(f"[Memory] After filtering to references: {len(img_results)} image hits")
+            
+            # Style embedding search if enabled
+            if self.state.config.get("style_embedding_enabled", False) and len(img_results) > 0:
+                try:
+                    # Generate style embedding for query (use average of existing reference embeddings as proxy)
+                    # In a real implementation, we might generate this from current scene context
+                    query_style_embed = self._get_query_style_embedding(entities)
+                    
+                    if query_style_embed is not None:
+                        style_hits = self.visual_ctx_table.search(query_style_embed, "style_embedding").limit(max(1, k_img * 5))
+                        style_results = list(style_hits.to_pandas().itertuples()) if style_hits is not None else []
+                        style_results = [r for r in style_results if getattr(r, 'scene_id', 0) == -1]
+                        
+                        print(f"[Memory] Style search: {len(style_results)} style hits")
+                        
+                        # Fuse content and style results using weighted rank fusion
+                        img_results = self._fuse_content_style_results(img_results, style_results, k_img)
+                        print(f"[Memory] After style fusion: {len(img_results)} fused results")
+                        
+                except Exception as e:
+                    print(f"[Memory] Error in style embedding search: {e}")
+                    # Continue with content-only results
             
         except Exception as e:
             print(f"[Memory] Error in initial search: {e}")
@@ -387,12 +485,15 @@ class MemoryService:
         
         try:
             model = self.state.config["models"]["embedding_text"]
-            response = call_openai_with_retry(
-                self.client,
-                model=model,
-                input=text,
-                dimensions=self.embedding_dim  # Use configurable dimension
-            )
+            # Only pass dimensions parameter for models that support it
+            kwargs = {
+                "model": model,
+                "input": text
+            }
+            if model == "text-embedding-3-large" or model == "text-embedding-3-small":
+                kwargs["dimensions"] = self.embedding_dim
+                
+            response = call_openai_with_retry(self.client, **kwargs)
             
             embedding = response.data[0].embedding
             
@@ -414,6 +515,104 @@ class MemoryService:
         except Exception as e:
             log_entry(self.state, "memory", "embedding_error", error=str(e))
             return [0.0] * self.embedding_dim
+    
+    def _get_query_style_embedding(self, entities: List[str]) -> Optional[List[float]]:
+        """Generate a query style embedding by averaging existing reference embeddings for entities."""
+        if not entities:
+            return None
+            
+        try:
+            # Get style embeddings from existing references that match the entities
+            df = self.visual_ctx_table.to_pandas()
+            if df.empty or 'style_embedding' not in df.columns:
+                return None
+                
+            # Filter to reference images with matching entities
+            entity_refs = df[
+                (df['scene_id'] == -1) &  # Reference images only
+                (df['entity'].isin(entities))
+            ]
+            
+            if entity_refs.empty:
+                # Fallback: use any reference images
+                entity_refs = df[df['scene_id'] == -1]
+                
+            if entity_refs.empty:
+                return None
+                
+            # Average the style embeddings (excluding zero vectors)
+            style_embeddings = []
+            for _, row in entity_refs.iterrows():
+                style_embed = row.get('style_embedding', [])
+                if style_embed and sum(abs(x) for x in style_embed) > 0:  # Skip zero vectors
+                    style_embeddings.append(style_embed)
+                    
+            if not style_embeddings:
+                return None
+                
+            # Compute average embedding
+            avg_embedding = [
+                sum(emb[i] for emb in style_embeddings) / len(style_embeddings)
+                for i in range(len(style_embeddings[0]))
+            ]
+            
+            return avg_embedding
+            
+        except Exception as e:
+            log_entry(self.state, "memory", "query_style_embedding_error", error=str(e))
+            return None
+    
+    def _fuse_content_style_results(self, content_results: List[Any], style_results: List[Any], k_img: int) -> List[Any]:
+        """Fuse content and style search results using weighted rank fusion."""
+        try:
+            style_weight = self.state.config.get("retrieval", {}).get("style_weight", 0.45)
+            content_weight = 1.0 - style_weight
+            
+            # Create rankings for both result sets
+            content_ranks = {getattr(r, 'frame_id', ''): i for i, r in enumerate(content_results)}
+            style_ranks = {getattr(r, 'frame_id', ''): i for i, r in enumerate(style_results)}
+            
+            # Collect all unique frame_ids
+            all_frame_ids = set(content_ranks.keys()) | set(style_ranks.keys())
+            
+            # Calculate fusion scores
+            fusion_scores = []
+            for frame_id in all_frame_ids:
+                if not frame_id:
+                    continue
+                    
+                # Get ranks (lower is better, so invert for scoring)
+                content_rank = content_ranks.get(frame_id, len(content_results))
+                style_rank = style_ranks.get(frame_id, len(style_results))
+                
+                # Reciprocal rank fusion with weights
+                content_score = content_weight / (content_rank + 1)
+                style_score = style_weight / (style_rank + 1)
+                
+                fusion_score = content_score + style_score
+                fusion_scores.append((fusion_score, frame_id))
+            
+            # Sort by fusion score (descending)
+            fusion_scores.sort(key=lambda x: x[0], reverse=True)
+            
+            # Build final result list preserving original objects
+            frame_id_to_result = {}
+            for result in content_results + style_results:
+                frame_id = getattr(result, 'frame_id', '')
+                if frame_id and frame_id not in frame_id_to_result:
+                    frame_id_to_result[frame_id] = result
+            
+            fused_results = []
+            for _, frame_id in fusion_scores[:k_img * 2]:  # Get more candidates for final filtering
+                if frame_id in frame_id_to_result:
+                    fused_results.append(frame_id_to_result[frame_id])
+            
+            return fused_results[:k_img]
+            
+        except Exception as e:
+            log_entry(self.state, "memory", "fusion_error", error=str(e))
+            # Fallback to content results only
+            return content_results[:k_img]
     
     def update_episodic_memory(self, event: Dict[str, Any]) -> None:
         """Update episodic memory with workflow events."""

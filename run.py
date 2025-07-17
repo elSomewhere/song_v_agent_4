@@ -241,54 +241,69 @@ def generate_final_report(state: WorkflowState) -> None:
     # Save metrics.json
     metrics_path = collector.save_metrics()
     
-    # Export memory data to output directory
-    memory = state.get_memory_service()  # Use singleton memory service
-    memory_output_dir = Path(state.output_dir) / "memory"
-    memory.export_memory_to_output(str(memory_output_dir))
+    # Export memory data to output directory (if accessible)
+    # Handle both WorkflowState objects and AddableValuesDict from LangGraph
+    try:
+        if hasattr(state, 'get_memory_service'):
+            memory = state.get_memory_service()
+            output_dir = state.output_dir
+        else:
+            # For AddableValuesDict, create memory service directly
+            from src.memory import MemoryService
+            # Create a minimal state-like object for MemoryService
+            class StateAdapter:
+                def __init__(self, state_dict):
+                    self.__dict__.update(state_dict)
+            
+            adapter = StateAdapter(dict(state))
+            memory = MemoryService(adapter)
+            output_dir = state["output_dir"]
+        
+        memory_output_dir = Path(output_dir) / "memory"
+        memory.export_memory_to_output(str(memory_output_dir))
+    except Exception as e:
+        print(f"Warning: Could not export memory data: {e}")
+        # Get output_dir for report generation
+        if hasattr(state, 'output_dir'):
+            output_dir = state.output_dir
+        else:
+            output_dir = state["output_dir"]
     
     # Get metrics for report
     metrics = collector.collect_from_logs()
     
-    # Generate summary report
-    report = f"""
-# VC-RAG-SBG Run Report
-
-**Run ID:** {state.trace_id}
-**Duration:** {metrics.elapsed_s:.1f} seconds
-**Total Cost:** ${metrics.total_cost_usd:.2f}
-**Total Tokens:** {metrics.total_tokens:,}
-
-## Generation Stats
-- Scenes Processed: {metrics.scenes_processed}
-- Shots Generated: {metrics.shots_generated}
-- Variations Created: {metrics.variations_created}
-- Frames Accepted: {metrics.frames_accepted}
-- Accept Rate: {metrics.accept_rate:.1%}
-
-## Quality Control
-- Retry Attempts: {metrics.retry_attempts}
-- Edit Attempts: {metrics.edit_attempts}
-- Frames Rejected: {metrics.frames_rejected}
-
-## Model Usage
-"""
+    # Generate console report
+    duration = metrics.elapsed_s
+    cost = metrics.total_cost_usd
+    tokens = metrics.total_tokens
     
+    print("\n" + "="*50)
+    print("\n# VC-RAG-SBG Run Report")
+    print(f"\n**Run ID:** {metrics.run_id}")
+    print(f"**Duration:** {duration:.1f} seconds")
+    print(f"**Total Cost:** ${cost:.2f}")
+    print(f"**Total Tokens:** {tokens:,}")
+    
+    print(f"\n## Generation Stats")
+    print(f"- Scenes Processed: {metrics.scenes_processed}")
+    print(f"- Shots Generated: {metrics.shots_generated}")
+    print(f"- Variations Created: {metrics.variations_created}")
+    print(f"- Frames Accepted: {metrics.frames_accepted}")
+    print(f"- Accept Rate: {metrics.accept_rate:.1%}")
+    
+    print(f"\n## Quality Control")
+    print(f"- Retry Attempts: {metrics.retry_attempts}")
+    print(f"- Edit Attempts: {metrics.edit_attempts}")
+    print(f"- Frames Rejected: {metrics.frames_rejected}")
+    
+    print(f"\n## Model Usage")
     for model, count in metrics.models_used.items():
-        report += f"- {model}: {count} calls\n"
+        print(f"- {model}: {count} calls")
     
-    report += f"\n## Output Location\n{state.output_dir}\n"
+    print(f"\n## Output Location")
+    print(f"{output_dir}")
     
-    # Save report
-    report_path = Path(state.output_dir) / "report.md"
-    with open(report_path, 'w') as f:
-        f.write(report)
-    
-    # Append detailed metrics
-    collector.append_to_report(report_path)
-    
-    print(f"\n{'='*50}")
-    print(report)
-    print(f"{'='*50}\n")
+    print("\n" + "="*50)
 
 
 def main():
@@ -306,6 +321,7 @@ def main():
     parser.add_argument("--ai-preprocess-script", action="store_true", help="Use AI to preprocess script")
     parser.add_argument("--ai-preprocess-refs", action="store_true", help="Use AI to preprocess references")
     parser.add_argument("--ai-preprocess-entities", action="store_true", help="Use AI to preprocess entities")
+    parser.add_argument("--enable-style-embedding", action="store_true", help="Enable visual style embedding for improved reference retrieval")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     
     args = parser.parse_args()
@@ -331,6 +347,7 @@ def main():
         "budget_usd": args.budget_usd,
         "n_variations": args.n_variations,
         "max_retries": args.max_retries,
+        "style_embedding_enabled": args.enable_style_embedding,
         "preprocess": {
             "script": "auto" if args.ai_preprocess_script else "heuristic",
             "refs": "auto" if args.ai_preprocess_refs else "skip",
@@ -356,6 +373,7 @@ def main():
     print(f"Output directory: {state.output_dir}")
     print(f"Budget: ${state.budget_usd}")
     print(f"Variations per shot: {state.n_variations}")
+    print(f"Style embedding: {'enabled' if args.enable_style_embedding else 'disabled'}")
     print()
     
     # Build and run workflow

@@ -156,22 +156,21 @@ def get_image_hash(image_path: str) -> str:
 def call_openai_with_retry(client: OpenAI, **kwargs) -> Any:
     """Call OpenAI API with retry logic."""
     try:
-        if "input" in kwargs and "tools" in kwargs:
-            # Responses API calls (for gpt-image-1 with references)
-            return client.responses.create(**kwargs)
-        elif "model" in kwargs and kwargs["model"].startswith("gpt-image"):
-            # Legacy image generation calls
+        model = kwargs.get("model", "")
+        
+        if model.startswith("text-embedding") or model == "image-embed-1":
+            # Embedding calls (both text and image embeddings)
+            return client.embeddings.create(**kwargs)
+        elif model.startswith("dall-e") or model == "gpt-image-1":
+            # Image generation calls (DALL-E and gpt-image-1)
             if "image" in kwargs:
                 # Edit endpoint
                 return client.images.edit(**kwargs)
             else:
                 # Generation endpoint
                 return client.images.generate(**kwargs)
-        elif "model" in kwargs and kwargs["model"].startswith("text-embedding"):
-            # Embedding calls
-            return client.embeddings.create(**kwargs)
         else:
-            # Chat completion calls
+            # Chat completion calls (text models)
             return client.chat.completions.create(**kwargs)
     except Exception as e:
         print(f"OpenAI API error: {e}")
@@ -185,9 +184,17 @@ def ensure_directory(path: str) -> None:
 
 def save_workflow_state(state: WorkflowState) -> None:
     """Save workflow state to JSON."""
-    state_path = Path(state.output_dir) / "state.json"
+    # Handle both WorkflowState objects and AddableValuesDict from LangGraph
+    if hasattr(state, 'output_dir'):
+        output_dir = state.output_dir
+        state_data = state.model_dump() if hasattr(state, 'model_dump') else dict(state)
+    else:
+        output_dir = state["output_dir"]
+        state_data = dict(state)
+    
+    state_path = Path(output_dir) / "state.json"
     with open(state_path, 'w') as f:
-        json.dump(state.model_dump(), f, indent=2, cls=DateTimeEncoder)
+        json.dump(state_data, f, indent=2, cls=DateTimeEncoder)
 
 
 def count_tokens_approx(text: str) -> int:
@@ -205,32 +212,72 @@ def parse_json_response(response: str) -> Dict[str, Any]:
     """Parse JSON from potentially messy LLM response with improved heuristics."""
     import re
     
-    # First, try to find JSON that's not inside code blocks
-    # Remove markdown code blocks to avoid parsing code examples
+    # First, try direct JSON parsing in case the response is clean
+    try:
+        parsed = json.loads(response.strip())
+        if isinstance(parsed, dict) and len(parsed) > 0:
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    
+    # Remove markdown code blocks and backticks
     clean_response = response
+    clean_response = re.sub(r'```json\s*', '', clean_response, flags=re.IGNORECASE)
     clean_response = re.sub(r'```[^`]*```', '', clean_response, flags=re.DOTALL)
     clean_response = re.sub(r'`[^`]*`', '', clean_response)
     
-    # Look for JSON objects
-    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-    matches = re.findall(json_pattern, clean_response, re.DOTALL)
+    # Remove common prefixes that GPT might add (but be careful not to truncate valid JSON)
+    clean_response = re.sub(r'^.*?(?=\{)', '', clean_response, flags=re.DOTALL)
+    # Don't truncate at first }, instead look for the last } (complete JSON object)
+    # clean_response = re.sub(r'\}.*?$', '}', clean_response, flags=re.DOTALL)  # REMOVED - was causing truncation
     
-    for match in matches:
+    # Try parsing the cleaned response
+    try:
+        parsed = json.loads(clean_response.strip())
+        if isinstance(parsed, dict) and len(parsed) > 0:
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    
+    # Look for JSON objects with improved regex
+    json_patterns = [
+        r'\{.*\}',  # Greedy pattern for full JSON - try first
+        r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}',  # Nested pattern
+        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Original pattern
+        r'\{.*?\}',  # Simple non-greedy pattern - try last
+    ]
+    
+    for pattern in json_patterns:
+        matches = re.findall(pattern, response, re.DOTALL)
+        for match in matches:
+            try:
+                parsed = json.loads(match.strip())
+                if isinstance(parsed, dict) and len(parsed) > 0:
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+    
+    # Fallback: try line by line for multiline JSON
+    lines = response.split('\n')
+    json_lines = []
+    in_json = False
+    brace_count = 0
+    
+    for line in lines:
+        line = line.strip()
+        if '{' in line and not in_json:
+            in_json = True
+            json_lines = [line]
+            brace_count = line.count('{') - line.count('}')
+        elif in_json:
+            json_lines.append(line)
+            brace_count += line.count('{') - line.count('}')
+            if brace_count <= 0:
+                break
+    
+    if json_lines:
         try:
-            # Try to parse each potential JSON
-            parsed = json.loads(match)
-            if isinstance(parsed, dict) and len(parsed) > 0:
-                return parsed
-        except json.JSONDecodeError:
-            continue
-    
-    # Fallback: try the original approach but with better validation
-    start_idx = clean_response.find('{')
-    end_idx = clean_response.rfind('}') + 1
-    
-    if start_idx != -1 and end_idx > start_idx:
-        json_str = clean_response[start_idx:end_idx]
-        try:
+            json_str = '\n'.join(json_lines)
             parsed = json.loads(json_str)
             if isinstance(parsed, dict) and len(parsed) > 0:
                 return parsed
@@ -238,17 +285,20 @@ def parse_json_response(response: str) -> Dict[str, Any]:
             pass
     
     # Try to find JSON array
-    start_idx = clean_response.find('[')
-    end_idx = clean_response.rfind(']') + 1
+    start_idx = response.find('[')
+    end_idx = response.rfind(']') + 1
     
     if start_idx != -1 and end_idx > start_idx:
-        json_str = clean_response[start_idx:end_idx]
+        json_str = response[start_idx:end_idx]
         try:
             parsed = json.loads(json_str)
             if isinstance(parsed, list) and len(parsed) > 0:
                 return {"data": parsed}
         except json.JSONDecodeError:
             pass
+    
+    # Last resort: print the response for debugging
+    print(f"[DEBUG] Failed to parse JSON from response: {response[:500]}...")
     
     raise ValueError("No valid JSON found in response")
 
@@ -293,4 +343,87 @@ def merge_logs(log_files: List[str], output_file: str) -> None:
     
     with jsonlines.open(output_file, mode='w') as writer:
         for log in all_logs:
-            writer.write(log) 
+            writer.write(log)
+
+
+def get_style_embedding(image_b64: str, config: Dict[str, Any], state: Any = None) -> List[float]:
+    """Generate style embedding for an image using image-embed-1.
+    
+    Args:
+        image_b64: Base64 encoded image data
+        config: Configuration dictionary
+        state: WorkflowState for logging and cost tracking (optional)
+        
+    Returns:
+        List of floats representing the style embedding vector
+    """
+    # Check if style embedding is enabled
+    if not config.get("style_embedding_enabled", False):
+        # Return zero vector if disabled
+        dim = config.get("style_embedding_dimension", 1024)
+        return [0.0] * dim
+    
+    # Create cache directory for style embeddings
+    cache_dir = Path(".cache") / "style_emb"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate cache key from image hash
+    image_hash = hashlib.sha256(image_b64.encode()).hexdigest()
+    cache_file = cache_dir / f"{image_hash}.json"
+    
+    # Check cache first
+    if cache_file.exists():
+        try:
+            with open(cache_file, 'r') as f:
+                cached_data = json.load(f)
+                if state:
+                    log_entry(state, "style_embedding", "cache_hit", 
+                             extra={"image_hash": image_hash[:8]})
+                return cached_data["embedding"]
+        except Exception as e:
+            if state:
+                log_entry(state, "style_embedding", "cache_error", error=str(e))
+    
+    # Generate new embedding
+    try:
+        client = get_openai_client()
+        model = config["models"].get("embedding_style", "image-embed-1")
+        
+        # Call image embedding API
+        response = call_openai_with_retry(
+            client,
+            model=model,
+            input=f"data:image/jpeg;base64,{image_b64}"
+        )
+        
+        embedding = response.data[0].embedding
+        cost = 0.0005  # Approximate cost per image embed
+        
+        # Update state if provided
+        if state:
+            state.total_cost += cost
+            log_entry(state, "style_embedding", "success",
+                     model=model, cost_usd=cost,
+                     extra={"dimension": len(embedding)})
+        
+        # Cache the result
+        cache_data = {
+            "embedding": embedding,
+            "model": model,
+            "timestamp": datetime.now().isoformat()
+        }
+        try:
+            with open(cache_file, 'w') as f:
+                json.dump(cache_data, f)
+        except Exception as e:
+            if state:
+                log_entry(state, "style_embedding", "cache_write_error", error=str(e))
+        
+        return embedding
+        
+    except Exception as e:
+        if state:
+            log_entry(state, "style_embedding", "error", error=str(e))
+        # Return zero vector on error
+        dim = config.get("style_embedding_dimension", 1024)
+        return [0.0] * dim 

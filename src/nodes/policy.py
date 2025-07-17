@@ -92,10 +92,13 @@ def _choose_best_image(state: WorkflowState) -> None:
     if not state.image_attempts:
         return
     
-    # Find the best image based on quality score
-    best_attempt = max(state.image_attempts, key=lambda x: x.get("quality_score", 0.0))
+    # Store copy of all attempts before modifying state
+    all_attempts = state.image_attempts.copy()
     
-    print(f"[Policy] Choosing best image from {len(state.image_attempts)} attempts (score: {best_attempt.get('quality_score', 0.0):.2f})")
+    # Find the best image based on quality score
+    best_attempt = max(all_attempts, key=lambda x: x.get("quality_score", 0.0))
+    
+    print(f"[Policy] Choosing best image from {len(all_attempts)} attempts (score: {best_attempt.get('quality_score', 0.0):.2f})")
     
     # Update current state to use the best image
     state.current_image_b64 = best_attempt["image_b64"]
@@ -109,7 +112,8 @@ def _choose_best_image(state: WorkflowState) -> None:
     rejected_dir = Path(state.output_dir) / "rejected_frames"
     rejected_dir.mkdir(parents=True, exist_ok=True)
     
-    for attempt in state.image_attempts:
+    rejected_count = 0
+    for attempt in all_attempts:  # Use original list, not the modified state.image_attempts
         if attempt["frame_id"] != best_attempt["frame_id"]:
             # This is a rejected image - move it to rejected folder
             try:
@@ -118,6 +122,7 @@ def _choose_best_image(state: WorkflowState) -> None:
                     rejected_path = rejected_dir / source_path.name
                     shutil.move(str(source_path), str(rejected_path))
                     print(f"[Policy] Moved rejected image to {rejected_path}")
+                    rejected_count += 1
                     
                     # Also save metadata about why it was rejected
                     metadata_path = rejected_dir / f"{source_path.stem}_metadata.json"
@@ -137,6 +142,6 @@ def _choose_best_image(state: WorkflowState) -> None:
     log_entry(state, "policy", "best_image_selected",
              extra={
                  "best_score": best_attempt.get("quality_score", 0.0),
-                 "total_attempts": len(state.image_attempts),
-                 "rejected_count": len(state.image_attempts) - 1
+                 "total_attempts": len(all_attempts),
+                 "rejected_count": rejected_count
              }) 
