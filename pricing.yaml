@@ -37,20 +37,6 @@ image_costs:
       low: 0.03
       medium: 0.12
       high: 0.48
-  dall-e-2:
-    "1024x1024":
-      standard: 0.02
-      hd: 0.02
-  dall-e-3:
-    "1024x1024":
-      standard: 0.04
-      hd: 0.08
-    "1024x1792":
-      standard: 0.08
-      hd: 0.12
-    "1792x1024":
-      standard: 0.08
-      hd: 0.12
 
 # Vision processing costs (approximate)
 vision_costs:

@@ -140,30 +140,12 @@ def _advance_shot(state: WorkflowState) -> None:
     
     print(f"[MemoryUpdate] ➡️ Moving to next shot ...")
     
-    # Use configurable shots per scene, default to 1 for script-driven workflows
-    shots_per_scene = state.config.get("shots_per_scene", 1)
+    # Note: Scene progression is handled by workflow_controller
+    # Don't increment scene here to avoid double increment
     
-    state.current_shot_idx += 1
-    
-    if state.current_shot_idx >= shots_per_scene:
-        # Move to next scene
-        state.current_shot_idx = 0
-        state.current_scene_idx += 1
-        
-        # Check if we have more scenes
-        if state.current_scene_idx < len(state.scenes):
-            print(f"[MemoryUpdate] 🎬 Starting Scene {state.current_scene_idx + 1}")
-            log_entry(state, "memory_update", "next_scene",
-                     extra={"scene_idx": state.current_scene_idx})
-        else:
-            # No more scenes - workflow complete
-            state.workflow_complete = True
-            log_entry(state, "memory_update", "workflow_complete",
-                     extra={"total_scenes": len(state.scenes),
-                           "total_frames": len(state.accepted_frames)})
-    else:
-        log_entry(state, "memory_update", "next_shot",
-                 extra={"shot_idx": state.current_shot_idx})
+    log_entry(state, "memory_update", "advance_shot",
+             extra={"current_scene": state.current_scene_idx,
+                   "current_shot": state.current_shot_idx})
 
 
 def _save_frame_metadata(state: WorkflowState, frame_data: Dict[str, Any]) -> None:

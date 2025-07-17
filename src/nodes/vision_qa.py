@@ -224,6 +224,9 @@ def _build_context_summary(nearby_frames: List[Dict], relevant_refs: List[Dict])
                 scene_id = frame.get('scene_id', 'unknown')
                 shot_id = frame.get('shot_id', 'unknown')
                 prompt = frame.get('prompt', 'No prompt available')
+                # Handle None prompt safely
+                if prompt is None:
+                    prompt = 'No prompt available'
                 parts.append(f"  - Scene {scene_id} Shot {shot_id}: {prompt[:100]}...")
     
     if relevant_refs:

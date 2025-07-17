@@ -128,7 +128,7 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
 
 def _render_new(client: Any, state: WorkflowState, variation: Any,
                ref_images: List[Dict]) -> Dict[str, Any]:
-    """Generate a new image using gpt-image-1 via proper Image API."""
+    """Generate a new image using gpt-image-1 via Images API."""
     
     # Build the full prompt
     full_prompt = _build_image_prompt(state, variation)
@@ -136,35 +136,50 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
     model = state.config["models"]["renderer_new"]
     
     if model == "gpt-image-1":
-        print(f"[Renderer] Using Image API for gpt-image-1")
+        print(f"[Renderer] Using Images API for gpt-image-1")
         
-        # For gpt-image-1, we need to use the images.edit() API if we have reference images,
-        # or images.generate() if we don't have reference images
         if ref_images:
             print(f"[Renderer] Using images.edit() with {len(ref_images)} reference images")
             
-            # Convert reference images to file-like objects
-            import io
+            # Create temporary files with proper extensions for reference images
+            import tempfile
             import base64
-            ref_image_files = []
-            for ref in ref_images[:4]:  # Limit to 4 as per documentation
-                if ref.get("base64"):
-                    image_data = base64.b64decode(ref["base64"])
-                    image_file = io.BytesIO(image_data)
-                    ref_image_files.append(image_file)
+            temp_files = []
             
-            # Use images.edit() API for gpt-image-1 with reference images
-            response = call_openai_with_retry(
-                client,
-                model=model,
-                image=ref_image_files,
-                prompt=full_prompt,
-                size="1024x1024",
-                quality="medium"
-            )
-            
-            image_b64 = response.data[0].b64_json
-            cost = 0.08  # Approximate cost for gpt-image-1 with references
+            try:
+                # Create temporary files for reference images
+                for i, ref in enumerate(ref_images[:4]):  # Limit to 4 reference images
+                    if ref.get("base64"):
+                        # Create temporary file with proper .png extension
+                        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                        image_data = base64.b64decode(ref["base64"])
+                        temp_file.write(image_data)
+                        temp_file.close()
+                        temp_files.append(temp_file.name)
+                        print(f"  - Created temp file for reference {i+1}: {ref.get('frame_id', 'unknown')}")
+                
+                # Use images.edit() API for gpt-image-1 with reference images
+                # Note: For gpt-image-1, we can pass multiple reference images
+                response = call_openai_with_retry(
+                    client,
+                    model=model,
+                    image=open(temp_files[0], 'rb'),  # Primary reference image
+                    prompt=full_prompt,
+                    size="1024x1024",
+                    quality="medium"
+                )
+                
+                image_b64 = response.data[0].b64_json
+                cost = 0.08  # Higher cost for gpt-image-1 with references
+                
+            finally:
+                # Clean up temporary files
+                import os
+                for temp_file in temp_files:
+                    try:
+                        os.unlink(temp_file)
+                    except:
+                        pass
         else:
             print(f"[Renderer] Using images.generate() without reference images")
             
@@ -174,23 +189,15 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
                 model=model,
                 prompt=full_prompt,
                 size="1024x1024",
-                quality="medium"
+                quality="medium",
+                output_format="png"
             )
             
             image_b64 = response.data[0].b64_json
             cost = 0.04  # Standard cost for gpt-image-1
     else:
-        # Standard generation for other models (dall-e-3, etc.)
-        response = call_openai_with_retry(
-            client,
-            model=model,
-            prompt=full_prompt,
-            size="1024x1024",
-            quality="medium"
-        )
-        
-        image_b64 = response.data[0].b64_json
-        cost = calculate_image_cost(model, "1024x1024", "medium")
+        # Only gpt-image-1 is supported - no DALL-E or other models
+        raise ValueError(f"Unsupported image generation model: {model}. Only 'gpt-image-1' is supported.")
     
     state.total_cost += cost
     
@@ -203,7 +210,7 @@ def _render_new(client: Any, state: WorkflowState, variation: Any,
 
 def _render_edit(client: Any, state: WorkflowState, variation: Any,
                 ref_images: List[Dict]) -> Dict[str, Any]:
-    """Edit an existing image using gpt-image-1 via proper Image API."""
+    """Edit an existing image using gpt-image-1 via Images API."""
     
     model = state.config["models"]["renderer_edit"]
     
@@ -213,55 +220,57 @@ def _render_edit(client: Any, state: WorkflowState, variation: Any,
     if model == "gpt-image-1":
         print(f"[Renderer] Using images.edit() API for gpt-image-1")
         
-        # Convert current image and reference images to file-like objects
-        import io
+        # Create temporary file for the current image to be edited
+        import tempfile
         import base64
         
-        image_files = []
+        temp_files = []
         
-        # Add current image to be edited as first image
-        if state.current_image_b64:
-            current_image_data = base64.b64decode(state.current_image_b64)
-            current_image_file = io.BytesIO(current_image_data)
-            image_files.append(current_image_file)
-        
-        # Add reference images for context (up to 3 additional)
-        for ref in ref_images[:3]:
-            if ref.get("base64"):
-                ref_image_data = base64.b64decode(ref["base64"])
-                ref_image_file = io.BytesIO(ref_image_data)
-                image_files.append(ref_image_file)
-        
-        print(f"[Renderer] Editing with {len(image_files)} images")
-        
-        # Use images.edit() API for gpt-image-1
-        response = call_openai_with_retry(
-            client,
-            model=model,
-            image=image_files,
-            prompt=edit_instruction,
-            size="1024x1024",
-            quality="medium"
-        )
-        
-        image_b64 = response.data[0].b64_json
-        cost = 0.04  # Approximate cost for gpt-image-1 edit
+        try:
+            # Create temporary file for current image
+            if state.current_image_b64:
+                current_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                current_image_data = base64.b64decode(state.current_image_b64)
+                current_temp_file.write(current_image_data)
+                current_temp_file.close()
+                temp_files.append(current_temp_file.name)
+                print(f"[Renderer] Created temp file for current image")
+            
+            # Note: For editing, we use the current image as the base
+            # Reference images are incorporated into the edit instruction for gpt-image-1
+            if ref_images:
+                print(f"[Renderer] Including {len(ref_images[:3])} reference images in edit instruction")
+                ref_context = " Reference style: " + ", ".join([
+                    f"{ref.get('entity', 'unknown')} ({ref.get('category', 'unknown')})"
+                    for ref in ref_images[:3] if ref.get('entity')
+                ])
+                edit_instruction += ref_context
+            
+            # Use images.edit() API for gpt-image-1
+            response = call_openai_with_retry(
+                client,
+                model=model,
+                image=open(temp_files[0], 'rb'),
+                prompt=edit_instruction,
+                size="1024x1024",
+                quality="medium"
+            )
+            
+            image_b64 = response.data[0].b64_json
+            cost = 0.04  # Approximate cost for gpt-image-1 edit
+            
+        finally:
+            # Clean up temporary files
+            import os
+            for temp_file in temp_files:
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
+                    
     else:
-        # Fallback for other models (though edit mainly uses gpt-image-1)
-        # Convert current image to file-like object
-        current_image_data = base64.b64decode(state.current_image_b64)
-        current_image_file = io.BytesIO(current_image_data)
-        
-        # Use standard edit API
-        response = call_openai_with_retry(
-            client,
-            model=model,
-            image=current_image_file,
-            prompt=edit_instruction
-        )
-        
-        image_b64 = response.data[0].b64_json
-        cost = 0.04  # Approximate cost for edit
+        # Only gpt-image-1 is supported - no DALL-E or other models
+        raise ValueError(f"Unsupported image editing model: {model}. Only 'gpt-image-1' is supported.")
     
     state.total_cost += cost
     state.edit_retry_count += 1

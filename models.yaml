@@ -66,6 +66,6 @@ fallbacks:
   embedding_text: text-embedding-3-small
   planner: gpt-4o-mini
   reviewer: gpt-4o-mini
-  renderer_new: dall-e-3  # Emergency fallback only
+  renderer_new: gpt-image-1  # Only gpt-image-1, no DALL-E fallback
   fast_qa: gpt-4o
   vision_qa: gpt-4o 

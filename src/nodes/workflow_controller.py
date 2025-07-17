@@ -39,6 +39,7 @@ def workflow_controller_node(state: WorkflowState) -> WorkflowState:
                                "frames": len(state.accepted_frames)})
                 state.workflow_complete = True
             else:
+                print(f"[WorkflowController] 🎬 Starting Scene {state.current_scene_idx + 1}")
                 log_entry(state, "workflow_controller", "next_scene",
                          extra={"scene": state.current_scene_idx})
         else:

@@ -43,11 +43,6 @@ def _load_pricing_config() -> Dict[str, Any]:
                 "1024x1024": {"low": 0.02, "medium": 0.08, "high": 0.32},
                 "1024x1536": {"low": 0.03, "medium": 0.12, "high": 0.48},
                 "1536x1024": {"low": 0.03, "medium": 0.12, "high": 0.48}
-            },
-            "dall-e-3": {
-                "1024x1024": {"standard": 0.04, "hd": 0.08},
-                "1024x1792": {"standard": 0.08, "hd": 0.12},
-                "1792x1024": {"standard": 0.08, "hd": 0.12}
             }
         }
     }
@@ -161,8 +156,8 @@ def call_openai_with_retry(client: OpenAI, **kwargs) -> Any:
         if model.startswith("text-embedding") or model == "image-embed-1":
             # Embedding calls (both text and image embeddings)
             return client.embeddings.create(**kwargs)
-        elif model.startswith("dall-e") or model == "gpt-image-1":
-            # Image generation calls (DALL-E and gpt-image-1)
+        elif model == "gpt-image-1":
+            # Only gpt-image-1 supported for image generation
             if "image" in kwargs:
                 # Edit endpoint
                 return client.images.edit(**kwargs)
