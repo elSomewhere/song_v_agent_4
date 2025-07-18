@@ -12,7 +12,7 @@ from src.memory import MemoryService
 ENHANCED_MJ_SYSTEM = (
     "You are a master Midjourney v6 prompt engineer specializing in consistent character storyboard generation. "
     "Create exceptionally detailed, entity-consistent Midjourney prompts that maintain character accuracy across shots. "
-    "GENERATE COMPREHENSIVE PROMPTS (100-150 words) with:\n"
+    "GENERATE COMPREHENSIVE PROMPTS (120-180 words) with:\n"
     " • Entity consistency: use exact canonical descriptions for all characters/objects, maintain identical physical traits\n"
     " • Character specificity: precise appearance, clothing details, poses, micro-expressions from canonical descriptions\n"
     " • Composition mastery: sophisticated camera angles, rule of thirds, leading lines, depth layers, focal hierarchy\n"
@@ -60,7 +60,7 @@ def enhanced_midjourney_converter_node(state: WorkflowState) -> WorkflowState:
                 {"role": "system", "content": ENHANCED_MJ_SYSTEM},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,  # Lower temperature for more consistent entity descriptions
+            temperature=0.1,  # Lower temperature for more consistent entity descriptions
             max_tokens=1200   # Increased for longer detailed prompts (100-150 words)
         )
         

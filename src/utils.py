@@ -65,10 +65,16 @@ IMAGE_GEN_COST = _PRICING_CONFIG.get("image_costs", {})
 
 
 class DateTimeEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles datetime objects."""
+    """Custom JSON encoder that handles datetime objects and Pydantic models."""
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle Pydantic models
+        if hasattr(obj, 'model_dump'):
+            return obj.model_dump()
+        # Handle BaseModel instances that might not have model_dump
+        if hasattr(obj, 'dict'):
+            return obj.dict()
         return super().default(obj)
 
 
