@@ -1,4 +1,4 @@
-"""Enhanced Midjourney converter that creates prompts directly from rich memory context."""
+"""Enhanced Midjourney converter that creates entity-consistent prompts with strong composition focus."""
 
 from pathlib import Path
 from typing import List, Dict, Any
@@ -10,27 +10,28 @@ from src.utils import (
 from src.memory import MemoryService
 
 ENHANCED_MJ_SYSTEM = (
-    "You are a master Midjourney v6 prompt engineer specializing in cinematic storyboard generation. "
-    "Create exceptionally detailed, visually rich Midjourney prompts directly from the provided context. "
-    "GENERATE COMPREHENSIVE PROMPTS (80-120 words) with:\n"
-    " • Character specificity: exact appearance, canonical traits, clothing details, poses, micro-expressions\n"
-    " • Environmental richness: atmospheric conditions, lighting quality, weather, time, season\n"
-    " • Cinematic composition: camera angles, shot types, depth of field, focal lengths, framing\n"
-    " • Visual continuity: maintain consistency with previous frames and reference images\n"
-    " • Artistic excellence: photorealistic quality, film grain, color grading, contrast\n"
-    " • Technical precision: 8k resolution, HDR, sharp focus, professional cinematography\n"
-    " • Texture and materials: fabric weaves, surface qualities, architectural details\n"
-    " • Mood and atmosphere: emotional tone, energy, dramatic tension\n"
-    " • Style references: cinematographers, art movements, film genres\n"
-    " • Use extensive comma-separated descriptive phrases\n"
-    " • Include appropriate parameters (--ar, --stylize, --v 6)\n"
+    "You are a master Midjourney v6 prompt engineer specializing in consistent character storyboard generation. "
+    "Create exceptionally detailed, entity-consistent Midjourney prompts that maintain character accuracy across shots. "
+    "GENERATE COMPREHENSIVE PROMPTS (100-150 words) with:\n"
+    " • Entity consistency: use exact canonical descriptions for all characters/objects, maintain identical physical traits\n"
+    " • Character specificity: precise appearance, clothing details, poses, micro-expressions from canonical descriptions\n"
+    " • Composition mastery: sophisticated camera angles, rule of thirds, leading lines, depth layers, focal hierarchy\n"
+    " • Environmental richness: atmospheric conditions, lighting quality, weather, time, season, spatial relationships\n"
+    " • Cinematic excellence: professional shot types, depth of field, focal lengths, framing, perspective\n"
+    " • Style-driven rendering: analyze style guide to determine visual approach (photorealistic, illustrated, animated, painterly, etc.)\n"
+    " • Technical quality: appropriate resolution and detail level matching the derived style aesthetic\n"
+    " • Material authenticity: surface qualities, architectural details, environmental textures suited to chosen style\n"
+    " • Mood integration: emotional tone matching scene context and character states\n"
+    " • Style adaptation: derive appropriate stylistic parameters and visual approach from style guide elements\n"
+    " • Use extensive comma-separated descriptive phrases for maximum detail\n"
+    " • Include flexible parameters based on style guide analysis\n"
     " • Add comprehensive --no negative elements\n"
-    "OUTPUT: Single masterfully detailed midjourney prompt, no explanations."
+    "OUTPUT: Single masterfully detailed midjourney prompt with consistent entities, no explanations."
 )
 
 
 def enhanced_midjourney_converter_node(state: WorkflowState) -> WorkflowState:
-    """Create midjourney prompts directly from rich memory context (ENHANCED VERSION)."""
+    """Create midjourney prompts with consistent entity descriptions and strong composition focus."""
     
     # Check budget first
     if not check_budget(state):
@@ -39,7 +40,7 @@ def enhanced_midjourney_converter_node(state: WorkflowState) -> WorkflowState:
         return state
     
     current_variation = state.variations[state.current_variation_idx]
-    print(f"[MJEnhanced] Scene {current_variation.scene_id} • Shot {current_variation.shot_id} • Variation {state.current_variation_idx + 1}/{len(state.variations)} – creating direct midjourney prompt...")
+    print(f"[MJEnhanced] Scene {current_variation.scene_id} • Shot {current_variation.shot_id} • Variation {state.current_variation_idx + 1}/{len(state.variations)} – creating entity-consistent midjourney prompt...")
 
     client = get_openai_client()
     memory = state.get_memory_service()
@@ -59,8 +60,8 @@ def enhanced_midjourney_converter_node(state: WorkflowState) -> WorkflowState:
                 {"role": "system", "content": ENHANCED_MJ_SYSTEM},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5,  # Slightly higher for creative prompt generation
-            max_tokens=1000   # Significantly increased for very detailed prompts
+            temperature=0.3,  # Lower temperature for more consistent entity descriptions
+            max_tokens=1200   # Increased for longer detailed prompts (100-150 words)
         )
         
         mj_prompt = response.choices[0].message.content.strip()
@@ -87,12 +88,13 @@ def enhanced_midjourney_converter_node(state: WorkflowState) -> WorkflowState:
                   extra={
                       "file": filename, 
                       "tokens": tokens,
-                      "context_sources": len(rich_context.get("reference_tags", [])),
+                      "entities_count": len(rich_context.get("canonical_entities", {})),
+                      "reference_sources": len(rich_context.get("reference_tags", [])),
                       "prompt_length": len(mj_prompt)
                   })
         
         print(f"[MJEnhanced] Enhanced prompt saved to {filename}")
-        print(f"[MJEnhanced] Used {len(rich_context.get('reference_tags', []))} reference sources → {len(mj_prompt)} char prompt")
+        print(f"[MJEnhanced] Used {len(rich_context.get('canonical_entities', {}))} entities + {len(rich_context.get('reference_tags', []))} refs → {len(mj_prompt)} char prompt")
         
     except Exception as e:
         log_entry(state, "mj_enhanced", "error", error=str(e))
@@ -119,25 +121,25 @@ def _gather_rich_context(state: WorkflowState, memory: MemoryService, variation)
         )
         global_context = {}
     
-    # Get canonical entity descriptions
+    # Get canonical entity descriptions - this is crucial for consistency
     canonical_entities = {}
     for entity in variation.entities:
         canonical_desc = memory.lookup_canonical(entity.name)
         if canonical_desc:
             canonical_entities[entity.name] = canonical_desc
     
-    # Extract reference image tags and analysis
+    # Extract reference image tags and analysis for entity appearance details
     reference_tags = []
-    for ref in relevant_refs[:5]:  # Top 5 most relevant
+    for ref in relevant_refs[:8]:  # Increased for more entity reference data
         if ref and isinstance(ref, dict):
             # Handle tags properly - could be None, list, or numpy array
             tags = ref.get("tags")
             if tags is None:
                 tags_list = []
             else:
-                # Convert to list and slice to get top 8 tags
+                # Convert to list and slice to get top 12 tags for more detail
                 try:
-                    tags_list = list(tags)[:8]
+                    tags_list = list(tags)[:12]
                 except (TypeError, ValueError):
                     tags_list = []
             
@@ -149,33 +151,9 @@ def _gather_rich_context(state: WorkflowState, memory: MemoryService, variation)
             }
             reference_tags.append(ref_analysis)
     
-    # Extract recent frame context
-    frame_continuity = []
-    for frame in nearby_frames[:3]:  # Last 3 frames
-        if frame and isinstance(frame, dict):
-            # Handle entities properly - could be None, list, or numpy array
-            entities = frame.get("entities")
-            if entities is None:
-                entities_list = []
-            else:
-                # Convert to list safely
-                try:
-                    entities_list = list(entities)
-                except (TypeError, ValueError):
-                    entities_list = []
-            
-            frame_info = {
-                "scene_id": frame.get("scene_id"),
-                "shot_id": frame.get("shot_id"),
-                "entities": entities_list,
-                "prompt_excerpt": (frame.get("prompt") or "")[:150]  # Handle None values
-            }
-            frame_continuity.append(frame_info)
-    
     return {
         "canonical_entities": canonical_entities,
         "reference_tags": reference_tags,
-        "frame_continuity": frame_continuity,
         "global_context": global_context,
         "style_text": state.style_text,
         "scene_data": state.scenes[variation.scene_id - 1] if variation.scene_id <= len(state.scenes) else None
@@ -183,13 +161,13 @@ def _gather_rich_context(state: WorkflowState, memory: MemoryService, variation)
 
 
 def _build_enhanced_midjourney_prompt(state: WorkflowState, variation, rich_context: Dict[str, Any]) -> str:
-    """Build comprehensive midjourney prompt creation request from rich context."""
+    """Build comprehensive midjourney prompt creation request emphasizing entity consistency and composition."""
     
-    # Extract midjourney parameters
+    # Extract base aspect ratio for flexible parameter derivation
     ar_map = {"square": "1:1", "landscape": "3:2", "portrait": "2:3", "auto": "1:1"}
     aspect_ratio = ar_map.get(state.config.get("aspect_ratio", "square"), "1:1")
     
-    prompt = f"""CREATE OPTIMAL MIDJOURNEY V6 PROMPT
+    prompt = f"""CREATE OPTIMAL MIDJOURNEY V6 PROMPT WITH ENTITY CONSISTENCY
 
 **CORE SHOT:**
 Scene {variation.scene_id}, Shot {variation.shot_id}
@@ -197,10 +175,10 @@ Shot Description: {variation.image_prompt}
 Camera: {variation.camera.type} {variation.camera.angle} {variation.camera.distance}
 {f"Movement: {variation.camera.movement}" if variation.camera.movement else ""}
 
-**ENTITIES IN SHOT:**
+**ENTITIES IN SHOT (MAINTAIN EXACT CONSISTENCY):**
 """
     
-    # Add entity details with canonical descriptions
+    # Enhanced entity details with canonical descriptions for consistency
     for entity in variation.entities:
         canonical = rich_context["canonical_entities"].get(entity.name, "")
         description = entity.description or "unknown"
@@ -210,42 +188,42 @@ Camera: {variation.camera.type} {variation.camera.angle} {variation.camera.dista
         prompt += f"- {entity.name}: {description}"
         if canonical:
             canonical_text = canonical or ""
-            prompt += f" (Canonical: {canonical_text[:100]})"
-        prompt += f" | Pose: {pose} | Emotion: {emotion}\n"
+            # Provide more canonical detail for consistency
+            prompt += f"\n  CANONICAL DESCRIPTION (use exactly): {canonical_text[:200]}"
+        prompt += f"\n  Current Pose: {pose} | Emotion: {emotion}\n"
     
-    # Add reference image intelligence
+    # Enhanced reference image intelligence for entity appearance
     if rich_context["reference_tags"]:
-        prompt += f"\n**REFERENCE IMAGE ANALYSIS ({len(rich_context['reference_tags'])} sources):**\n"
+        prompt += f"\n**ENTITY REFERENCE DETAILS ({len(rich_context['reference_tags'])} sources):**\n"
         for ref in rich_context["reference_tags"]:
-            tags_str = ", ".join(ref["tags"][:5])
-            prompt += f"- {ref['entity']} ({ref['category']}): {tags_str}\n"
+            tags_str = ", ".join(ref["tags"][:8])  # More tags for detail
+            prompt += f"- {ref['entity']} ({ref['category']}): {tags_str} [confidence: {ref['confidence']:.2f}]\n"
     
-    # Add frame continuity context
-    if rich_context["frame_continuity"]:
-        prompt += f"\n**VISUAL CONTINUITY (last {len(rich_context['frame_continuity'])} frames):**\n"
-        for frame in rich_context["frame_continuity"]:
-            # Safely build entities string
-            entities_list = frame.get("entities", [])
-            entities_str = ", ".join(str(entity) for entity in entities_list[:3])
-            prompt += f"- Scene {frame['scene_id']}.{frame['shot_id']}: {entities_str} | {frame['prompt_excerpt']}\n"
-    
-    # Add style and environment context
+    # Comprehensive style guide for flexible parameter derivation
     if rich_context["style_text"]:
         style_text = rich_context["style_text"] or ""
-        if style_text:  # Only add if not empty after None check
-            prompt += f"\n**STYLE GUIDE:**\n{style_text[:400]}\n"
+        if style_text:
+            prompt += f"\n**STYLE GUIDE (derive appropriate parameters):**\n{style_text[:600]}\n"
     
     if variation.style_notes:
         prompt += f"\n**SHOT-SPECIFIC STYLE:**\n{variation.style_notes}\n"
     
-    # Add scene context
+    # Enhanced scene context for composition
     if rich_context["scene_data"]:
         scene = rich_context["scene_data"]
         prompt += f"\n**SCENE CONTEXT:**\n"
         prompt += f"Location: {getattr(scene, 'location', 'Unknown')}\n"
         prompt += f"Time: {getattr(scene, 'time_of_day', 'Unknown')}\n"
         if hasattr(scene, 'narrative') and scene.narrative:
-            prompt += f"Narrative: {scene.narrative[:200]}\n"
+            prompt += f"Narrative: {scene.narrative[:300]}\n"
+    
+    # Composition-focused guidance
+    prompt += f"\n**COMPOSITION REQUIREMENTS:**\n"
+    prompt += f"- Apply rule of thirds for subject placement\n"
+    prompt += f"- Create clear focal hierarchy and depth layers\n"
+    prompt += f"- Use leading lines and perspective to guide viewer attention\n"
+    prompt += f"- Balance negative space with detailed elements\n"
+    prompt += f"- Consider camera angle impact on emotional tone\n"
     
     # Add negative guidance
     negative_elements = []
@@ -254,26 +232,31 @@ Camera: {variation.camera.type} {variation.camera.angle} {variation.camera.dista
     
     prompt += f"""
 **YOUR TASK:**
-Create a single, exceptionally detailed Midjourney v6 prompt (80-120 words) that:
-1. Captures ALL visual elements from the shot description with specific details
-2. Integrates canonical character descriptions with precise physical traits
-3. Uses reference image tags to build rich visual textures and materials
-4. Maintains strong visual continuity with previous frames
-5. Applies comprehensive style guide elements
-6. Uses extensive comma-separated descriptive phrases
-7. Includes detailed cinematography language (camera, lighting, composition)
-8. Specifies surface textures, materials, and environmental details
-9. Adds quality markers (8k, HDR, sharp focus, professional cinematography)
-10. Ends with: --ar {aspect_ratio} --stylize 1000 --v 6
-{f"11. Includes comprehensive negatives: --no {', '.join(negative_elements)}" if negative_elements else ""}
+Create a single, exceptionally detailed Midjourney v6 prompt (100-150 words) that:
+1. Uses EXACT canonical descriptions for ALL entities to ensure consistency across storyboard
+2. Maintains identical physical traits, clothing, and appearance details for each character
+3. Applies sophisticated composition principles (rule of thirds, depth, focal hierarchy)
+4. Integrates reference image details for rich visual textures and entity accuracy
+5. ANALYZES STYLE GUIDE to determine visual approach (photorealistic, illustrated, animated, cartoon, painterly, etc.)
+6. Includes detailed cinematography language (camera work, lighting, framing) appropriate to derived style
+7. Specifies precise surface textures, materials, and environmental details matching the visual style
+8. Adds technical quality markers appropriate to the style (avoid defaulting to photorealistic terms)
+9. Derives appropriate stylistic parameters (--stylize, --chaos, --style, etc.) from style guide analysis
+10. Base aspect ratio: --ar {aspect_ratio} (adjust if style guide suggests different ratio)
+11. Always include --v 6 for latest model
+{f"12. Include comprehensive negatives: --no {', '.join(negative_elements)}" if negative_elements else ""}
 
-GENERATE A MASTERFULLY DETAILED PROMPT - NO EXPLANATIONS, MAXIMUM VISUAL RICHNESS."""
+ENTITY CONSISTENCY IS PARAMOUNT - use identical descriptions every time an entity appears.
+EMPHASIZE COMPOSITION MASTERY - create visually compelling, professionally framed shots.
+DERIVE STYLE FROM GUIDE - analyze style guide to determine appropriate visual aesthetic and technical approach.
+
+GENERATE MASTERFULLY DETAILED PROMPT - NO EXPLANATIONS, MAXIMUM ENTITY CONSISTENCY."""
     
     return prompt
 
 
 def _derive_mj_suffix(state: WorkflowState, variation) -> str:
-    """Derive Midjourney parameters from state and variation."""
+    """Derive base Midjourney aspect ratio - stylistic parameters now AI-derived from style guide."""
     ar_map = {"square": "1:1", "landscape": "3:2", "portrait": "2:3", "auto": "1:1"}
     ar = ar_map.get(state.config.get("aspect_ratio", "square"), "1:1")
-    return f"--ar {ar} --stylize 1000 --v 6" 
+    return f"--ar {ar} --v 6"  # Base parameters only, AI derives stylistic ones 
