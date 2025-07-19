@@ -120,16 +120,18 @@ def should_sample_vision_qa(state: WorkflowState) -> str:
 
 
 def should_retry_or_update(state: WorkflowState) -> str:
-    """Conditional edge after policy to either retry or update memory."""
-    if state.policy_action in {"retry_new", "retry_edit"}:
-        return "renderer"
-    else:  # accept or give_up
-        return "memory_update"
+    """Conditional edge after policy to always go to memory_update first."""
+    # Always go to memory_update first to handle retry counters
+    # memory_update will then route retries back to renderer
+    return "memory_update"
 
 
 def should_continue_workflow(state: WorkflowState) -> str:
     """Conditional edge after memory_update to continue or end."""
-    if state.workflow_complete:
+    # If we just handled a retry, go back to renderer
+    if state.policy_action in {"retry_new", "retry_edit"}:
+        return "renderer"
+    elif state.workflow_complete:
         return "end"
     else:
         return "workflow_controller"
@@ -357,6 +359,7 @@ def main():
     parser.add_argument("--ai-preprocess-refs", action="store_true", help="Use AI to preprocess references")
     parser.add_argument("--ai-preprocess-entities", action="store_true", help="Use AI to preprocess entities")
     parser.add_argument("--enable-style-embedding", action="store_true", help="Enable visual style embedding for improved reference retrieval")
+    parser.add_argument("--disable-spatial-analysis", action="store_true", help="Disable AI-driven spatial relationship analysis in prompts")
     parser.add_argument("--aspect-ratio", choices=["square", "landscape", "portrait", "auto"], default="square", 
                        help="Aspect ratio for generated images (square=1024x1024, landscape=1536x1024, portrait=1024x1536, auto=model chooses)")
     parser.add_argument("--renderer", choices=["openai", "midjourney"], help="Render engine: openai for image generation, midjourney for prompt optimization")
@@ -387,6 +390,7 @@ def main():
         "n_variations": args.n_variations,
         "max_retries": args.max_retries,
         "style_embedding_enabled": args.enable_style_embedding,
+        "use_spatial_analysis": not args.disable_spatial_analysis,  # Invert the disable flag
         "aspect_ratio": args.aspect_ratio,
         "render_engine": args.renderer or "openai",  # Override render engine if specified
         "midjourney_mode": getattr(args, 'midjourney_mode', None) or "enhanced",  # Override midjourney mode if specified
@@ -417,6 +421,7 @@ def main():
     print(f"Variations per shot: {state.n_variations}")
     print(f"Render engine: {state.config.get('render_engine', 'openai')}")
     print(f"Style embedding: {'enabled' if args.enable_style_embedding else 'disabled'}")
+    print(f"Spatial analysis: {'enabled' if state.config.get('use_spatial_analysis', True) else 'disabled'}")
     if state.config.get('render_engine') == 'midjourney':
         print(f"✨ Midjourney mode: Generating optimized prompts instead of images")
     print()

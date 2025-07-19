@@ -49,6 +49,7 @@ def memory_update_node(state: WorkflowState) -> WorkflowState:
         
     elif state.policy_action == "retry_edit":
         # Retry with edit (keep current image for editing)
+        state.edit_retry_count += 1  # Fix: increment edit retry count
         state.fast_qa_result = None
         state.vision_qa_result = None
         log_entry(state, "memory_update", "retry_edit",

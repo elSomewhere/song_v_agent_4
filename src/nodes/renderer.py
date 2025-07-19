@@ -14,7 +14,7 @@ from src.utils import (
     load_image_as_base64, get_image_size_from_aspect_ratio
 )
 from src.memory import MemoryService
-from src.prompt_builder import build_raw_prompt
+from src.prompt_builder import build_raw_prompt, build_enhanced_raw_prompt
 
 
 def renderer_node(state: WorkflowState) -> WorkflowState:
@@ -120,6 +120,9 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
                      "prompt_file": str(prompt_temp_file),
                  })
         
+        # Clear policy_action after successful render to allow normal workflow progression
+        state.policy_action = None
+        
     except Exception as e:
         log_entry(state, "renderer", "error", error=str(e))
         state.policy_action = "give_up"
@@ -127,12 +130,79 @@ def renderer_node(state: WorkflowState) -> WorkflowState:
     return state
 
 
+def _gather_rich_context_for_renderer(state: WorkflowState, memory: MemoryService, variation) -> Dict[str, Any]:
+    """Gather rich context for enhanced GPT-image-1 prompt creation."""
+    
+    # Get enhanced visual context (same as reviewer and Midjourney converter use)
+    if state.config.get("context_mode") == "enhanced" and hasattr(memory, 'get_enhanced_visual_context'):
+        nearby_frames, relevant_refs, global_context = memory.get_enhanced_visual_context(
+            variation.scene_id,
+            variation.shot_id,
+            window_size=state.config.get("ctx_window", 4)
+        )
+    else:
+        nearby_frames, relevant_refs = memory.get_visual_context(
+            variation.scene_id,
+            variation.shot_id,
+            window_size=state.config.get("ctx_window", 4)
+        )
+        global_context = {}
+    
+    # Get canonical entity descriptions for consistency
+    canonical_entities = {}
+    for entity in variation.entities:
+        canonical_desc = memory.lookup_canonical(entity.name)
+        if canonical_desc:
+            canonical_entities[entity.name] = canonical_desc
+    
+    # Extract reference image tags and analysis for entity appearance details
+    reference_tags = []
+    for ref in relevant_refs[:6]:  # Limit for renderer efficiency
+        if ref and isinstance(ref, dict):
+            # Handle tags properly - could be None, list, or numpy array
+            tags = ref.get("tags")
+            if tags is None:
+                tags_list = []
+            else:
+                try:
+                    tags_list = list(tags)[:8]  # Top 8 tags
+                except (TypeError, ValueError):
+                    tags_list = []
+            
+            ref_analysis = {
+                "entity": ref.get("entity", "unknown"),
+                "category": ref.get("category", "unknown"), 
+                "tags": tags_list,
+                "confidence": ref.get("confidence", 0.0)
+            }
+            reference_tags.append(ref_analysis)
+    
+    return {
+        "canonical_entities": canonical_entities,
+        "reference_tags": reference_tags,
+        "global_context": global_context,
+        "style_text": state.style_text,
+        "scene_data": state.scenes[variation.scene_id - 1] if variation.scene_id <= len(state.scenes) else None
+    }
+
+
 def _render_new(client: Any, state: WorkflowState, variation: Any,
                ref_images: List[Dict]) -> Dict[str, Any]:
     """Generate a new image using gpt-image-1 via Images API."""
     
-    # Build the full prompt
-    full_prompt = build_raw_prompt(state, variation)
+    # Determine if we should use enhanced prompts
+    use_enhanced = state.config.get("use_enhanced_prompts", True)
+    
+    if use_enhanced:
+        # Gather rich context for enhanced prompts
+        memory = state.get_memory_service()
+        rich_context = _gather_rich_context_for_renderer(state, memory, variation)
+        full_prompt = build_enhanced_raw_prompt(state, variation, rich_context)
+        print(f"[Renderer] Using enhanced prompt with {len(rich_context.get('canonical_entities', {}))} entities + {len(rich_context.get('reference_tags', []))} refs")
+    else:
+        # Use standard prompt
+        full_prompt = build_raw_prompt(state, variation)
+        print(f"[Renderer] Using standard prompt")
     
     # Get image size from aspect ratio configuration
     aspect_ratio = state.config.get("aspect_ratio", "square")
@@ -223,8 +293,18 @@ def _render_edit(client: Any, state: WorkflowState, variation: Any,
     
     model = state.config["models"]["renderer_edit"]
     
-    # Build edit instruction
-    edit_instruction = _build_edit_instruction(state, variation)
+    # Build edit instruction (enhanced if enabled)
+    use_enhanced = state.config.get("use_enhanced_prompts", True)
+    
+    if use_enhanced:
+        # Gather rich context for enhanced edit instructions
+        memory = state.get_memory_service()
+        rich_context = _gather_rich_context_for_renderer(state, memory, variation)
+        edit_instruction = _build_edit_instruction(state, variation, rich_context)
+        print(f"[Renderer] Using enhanced edit instruction with {len(rich_context.get('canonical_entities', {}))} entities")
+    else:
+        edit_instruction = _build_edit_instruction(state, variation)
+        print(f"[Renderer] Using standard edit instruction")
     
     if model == "gpt-image-1":
         print(f"[Renderer] Using images.edit() API for gpt-image-1")
@@ -355,8 +435,37 @@ def _get_reference_images(state: WorkflowState, memory: MemoryService,
 
 
 
-def _build_edit_instruction(state: WorkflowState, variation: Any) -> str:
-    """Build instruction for editing an existing image."""
+def _build_edit_instruction(state: WorkflowState, variation: Any, rich_context: Dict[str, Any] = None) -> str:
+    """Build enhanced instruction for editing an existing image."""
+    
+    # Determine if we should use enhanced instructions
+    use_enhanced = state.config.get("use_enhanced_prompts", True)
+    
+    if not use_enhanced:
+        # Original simple edit instruction
+        guidance = ""
+        if state.fast_qa_result and state.fast_qa_result.retry_guidance:
+            guidance = state.fast_qa_result.retry_guidance
+        elif state.vision_qa_result and state.vision_qa_result.retry_guidance:
+            guidance = state.vision_qa_result.retry_guidance
+        
+        instruction = f"Edit this image to improve quality. {guidance}"
+        
+        # Add specific issues to address
+        issues = []
+        if state.fast_qa_result:
+            issues.extend(state.fast_qa_result.specific_issues)
+        if state.vision_qa_result:
+            issues.extend(state.vision_qa_result.specific_issues)
+        
+        if issues:
+            instruction += f" Fix these issues: {', '.join(issues[:3])}"
+        
+        return instruction
+    
+    # Enhanced edit instruction with spatial relationships and entity consistency
+    parts = []
+    parts.append("EDIT THIS IMAGE TO IMPROVE QUALITY AND ACCURACY")
     
     # Get retry guidance from QA result
     guidance = ""
@@ -365,7 +474,8 @@ def _build_edit_instruction(state: WorkflowState, variation: Any) -> str:
     elif state.vision_qa_result and state.vision_qa_result.retry_guidance:
         guidance = state.vision_qa_result.retry_guidance
     
-    instruction = f"Edit this image to improve quality. {guidance}"
+    if guidance:
+        parts.append(f"QA GUIDANCE: {guidance}")
     
     # Add specific issues to address
     issues = []
@@ -375,6 +485,31 @@ def _build_edit_instruction(state: WorkflowState, variation: Any) -> str:
         issues.extend(state.vision_qa_result.specific_issues)
     
     if issues:
-        instruction += f" Fix these issues: {', '.join(issues[:3])}"
+        parts.append(f"FIX ISSUES: {', '.join(issues[:5])}")
     
-    return instruction 
+    # Entity consistency requirements
+    if variation.entities:
+        parts.append("ENTITY CONSISTENCY REQUIREMENTS:")
+        memory = state.get_memory_service()
+        for entity in variation.entities:
+            canonical = memory.lookup_canonical(entity.name) if memory else ""
+            if canonical:
+                parts.append(f"- {entity.name}: maintain exact appearance: {canonical[:100]}")
+    
+    # Spatial relationship requirements
+    parts.append("SPATIAL ACCURACY REQUIREMENTS:")
+    parts.append(f"- Maintain exact positioning from description: '{variation.image_prompt}'")
+    parts.append("- Ensure correct entity orientations and relative positions")
+    parts.append("- Preserve who faces whom and interaction positioning")
+    
+    # Style consistency
+    if state.style_text:
+        parts.append(f"STYLE CONSISTENCY: maintain aesthetic from style guide")
+    
+    # Composition improvements
+    parts.append("COMPOSITION IMPROVEMENTS:")
+    parts.append("- Apply rule of thirds and professional framing")
+    parts.append("- Enhance depth layers and focal hierarchy")
+    parts.append("- Improve visual balance and clarity")
+    
+    return "\n".join(parts) 

@@ -32,6 +32,8 @@ DEFAULT_CONFIG = {
     # Image generation
     "aspect_ratio": "square",  # square | landscape | portrait | auto
     "image_quality": "medium",  # low | medium | high | auto
+    "use_enhanced_prompts": True,  # Enable enhanced prompts with spatial relationships and entity consistency
+    "use_spatial_analysis": True,  # Enable AI-driven spatial relationship analysis in prompts
 
     # Retries
     "max_retries": 2,

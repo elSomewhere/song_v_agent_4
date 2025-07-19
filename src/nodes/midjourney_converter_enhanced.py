@@ -13,8 +13,9 @@ ENHANCED_MJ_SYSTEM = (
     "You are a master Midjourney v6 prompt engineer specializing in consistent character storyboard generation. "
     "Create exceptionally detailed, entity-consistent Midjourney prompts that maintain character accuracy across shots. "
     "GENERATE COMPREHENSIVE PROMPTS (120-180 words) with:\n"
-    " • Entity consistency: use exact canonical descriptions for all characters/objects, maintain identical physical traits\n"
+    " • Entity consistency: use exact canonical descriptions for all characters/objects, maintain identical visual and physical traits\n"
     " • Character specificity: precise appearance, clothing details, poses, micro-expressions from canonical descriptions\n"
+    " • Spatial precision: explicit entity positioning, orientations, who faces whom, relative positioning (left/right/behind/front)\n"
     " • Composition mastery: sophisticated camera angles, rule of thirds, leading lines, depth layers, focal hierarchy\n"
     " • Environmental richness: atmospheric conditions, lighting quality, weather, time, season, spatial relationships\n"
     " • Cinematic excellence: professional shot types, depth of field, focal lengths, framing, perspective\n"
@@ -26,7 +27,7 @@ ENHANCED_MJ_SYSTEM = (
     " • Use extensive comma-separated descriptive phrases for maximum detail\n"
     " • Include flexible parameters based on style guide analysis\n"
     " • Add comprehensive --no negative elements\n"
-    "OUTPUT: Single masterfully detailed midjourney prompt with consistent entities, no explanations."
+    "OUTPUT: Single masterfully detailed midjourney prompt with consistent entities and precise spatial relationships, no explanations."
 )
 
 
@@ -192,6 +193,15 @@ Camera: {variation.camera.type} {variation.camera.angle} {variation.camera.dista
             prompt += f"\n  CANONICAL DESCRIPTION (use exactly): {canonical_text[:200]}"
         prompt += f"\n  Current Pose: {pose} | Emotion: {emotion}\n"
     
+    # Add spatial relationship analysis from shot description
+    prompt += f"\n**SPATIAL RELATIONSHIPS (CRITICAL FOR ACCURACY):**\n"
+    prompt += f"ANALYZE the shot description for entity positioning: '{variation.image_prompt}'\n"
+    prompt += f"Extract and specify:\n"
+    prompt += f"- WHO is facing WHOM (eye contact, body orientation, head direction)\n"
+    prompt += f"- RELATIVE POSITIONS (left/right, behind/in front, above/below, near/far)\n"
+    prompt += f"- SPATIAL ARRANGEMENTS (clustered, spread out, in formation, etc.)\n"
+    prompt += f"- INTERACTION POSITIONING (reaching toward, pointing at, looking away from, etc.)\n"
+    
     # Enhanced reference image intelligence for entity appearance
     if rich_context["reference_tags"]:
         prompt += f"\n**ENTITY REFERENCE DETAILS ({len(rich_context['reference_tags'])} sources):**\n"
@@ -235,22 +245,24 @@ Camera: {variation.camera.type} {variation.camera.angle} {variation.camera.dista
 Create a single, exceptionally detailed Midjourney v6 prompt (100-150 words) that:
 1. Uses EXACT canonical descriptions for ALL entities to ensure consistency across storyboard
 2. Maintains identical physical traits, clothing, and appearance details for each character
-3. Applies sophisticated composition principles (rule of thirds, depth, focal hierarchy)
-4. Integrates reference image details for rich visual textures and entity accuracy
-5. ANALYZES STYLE GUIDE to determine visual approach (photorealistic, illustrated, animated, cartoon, painterly, etc.)
-6. Includes detailed cinematography language (camera work, lighting, framing) appropriate to derived style
-7. Specifies precise surface textures, materials, and environmental details matching the visual style
-8. Adds technical quality markers appropriate to the style (avoid defaulting to photorealistic terms)
-9. Derives appropriate stylistic parameters (--stylize, --chaos, --style, etc.) from style guide analysis
-10. Base aspect ratio: --ar {aspect_ratio} (adjust if style guide suggests different ratio)
-11. Always include --v 6 for latest model
-{f"12. Include comprehensive negatives: --no {', '.join(negative_elements)}" if negative_elements else ""}
+3. **SPECIFIES PRECISE SPATIAL RELATIONSHIPS** - who faces whom, relative positions (left/right/behind/front), orientations, and interaction positioning
+4. Applies sophisticated composition principles (rule of thirds, depth, focal hierarchy)
+5. Integrates reference image details for rich visual textures and entity accuracy
+6. ANALYZES STYLE GUIDE to determine visual approach (photorealistic, illustrated, animated, cartoon, painterly, etc.)
+7. Includes detailed cinematography language (camera work, lighting, framing) appropriate to derived style
+8. Specifies precise surface textures, materials, and environmental details matching the visual style
+9. Adds technical quality markers appropriate to the style (avoid defaulting to photorealistic terms)
+10. Derives appropriate stylistic parameters (--stylize, --chaos, --style, etc.) from style guide analysis
+11. Base aspect ratio: --ar {aspect_ratio} (adjust if style guide suggests different ratio)
+12. Always include --v 6 for latest model
+{f"13. Include comprehensive negatives: --no {', '.join(negative_elements)}" if negative_elements else ""}
 
 ENTITY CONSISTENCY IS PARAMOUNT - use identical descriptions every time an entity appears.
+SPATIAL ACCURACY IS CRITICAL - entities must be positioned and oriented exactly as described in the shot.
 EMPHASIZE COMPOSITION MASTERY - create visually compelling, professionally framed shots.
 DERIVE STYLE FROM GUIDE - analyze style guide to determine appropriate visual aesthetic and technical approach.
 
-GENERATE MASTERFULLY DETAILED PROMPT - NO EXPLANATIONS, MAXIMUM ENTITY CONSISTENCY."""
+GENERATE MASTERFULLY DETAILED PROMPT - NO EXPLANATIONS, MAXIMUM ENTITY CONSISTENCY AND SPATIAL PRECISION."""
     
     return prompt
 

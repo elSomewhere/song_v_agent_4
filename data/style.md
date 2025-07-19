@@ -1,39 +1,23 @@
-### **Drawing Style Description:**
+VISUAL DNA
 
-**Type:**
-Digital illustration that fuses *Satoshi Kon’s vibrant, hand-painted anime aesthetic* with Tarkovsky-like poetic stillness.
+Era & Mood | Adult late‑80s/early‑90s OVA grit (think GitS, Patlabor 2), fused with dream‑like Tarkovskian stillness.
 
-**Color Palette:**
+Proportions | Grounded realism—no chibi, no heroic exaggeration. Muscle, fabric, and plate follow real anatomy.
 
-* Cinematic yet lively hues—deep teals, warm ambers, and occasional electric pinks or reds.
-* Strong highlights and shadow blocks to heighten the reality-vs-dream tension.
-* Fine film-grain or subtle dust overlay, evoking 35 mm celluloid texture.
+Linework | Hard, ink‑washed contours on tech & armor; softer graphite‑style edges on skin and cloth; light hatching for surface wear.
 
-**Linework:**
+Texture | Hand‑painted watercolor / gouache feel layered with fine 35 mm film grain and subtle dust‑speck overlay.
 
-* Clean, precise contours with slight taper; almost no heavy outlining.
-* Sparse cross-contour strokes used only to suggest motion or psychological stress.
-* Faces drawn with delicate, highly expressive features.
+COLOR ALCHEMY
 
-**Character Design:**
+Core Palette | Deep teals, burnt ambers, desaturated steels. Occasional muted crimson or electric pink accent to punctuate drama.
 
-* Realistic proportions but unmistakably anime faces, true to Kon’s signature style.
-* Contemporary urban attire (work suits, streetwear, uniforms) with occasional surreal props—duplicate shadows, floating objects.
-* Hair rendered in bold, saturated tones and smoothly shaded.
+Contrast | High‑key rim lights vs. cavernous shadows (strong chiaroscuro). Keep mid‑tones restrained for a moody cinematic grade.
 
-**Environment:**
+Saturation | Overall slightly desaturated; push saturation only on focal points (blood, warning lights, glowing cores).
 
-* Everyday Japanese cityscapes—neon backstreets, train stations, cramped apartments—painted in meticulous, painterly detail.
-* Tarkovskian composition: wide static frames, pronounced negative space, reflective surfaces (puddles, windows), and deep-focus layers that recede into soft haze.
-* Calm, lingering camera angle—often eye-level or slightly low, creating meditative stillness.
+LIGHT & ATMOSPHERE
 
-**Overall Mood:**
+Lighting | Single hard source or overhead strips; cast long, sharp silhouettes. Bleed gentle volumetric haze for dreaminess.
 
-* Lyrical and introspective, alternating between grounded realism and unsettling dream logic.
-* Evokes themes of memory, identity, and blurred perception, with a quiet undercurrent of unease.
-
----
-
-**Summary of the drawing style:**
-
-> “Create a still image with Tarkovsky-esque, contemplative framing and gritty retro–sci-fi manga style, combined with Satoshi Kon’s vivid yet clean anime artistry—rich colors, precise lines, and subtle surreal flourishes that blur the line between reality and dream.”
+Ambience | Industrial air thick with dust motes; rolling fog or smoke on exteriors; faint lens bloom on highlights.
